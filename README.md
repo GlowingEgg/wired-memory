@@ -55,6 +55,53 @@ cmake -Bbuild -GXcode
 open build/MyPluginName.xcodeproj
 ```
 
+## Built plugin output
+
+After building, plugin artefacts land in:
+
+```
+build/MyPluginName_artefacts/<Debug|Release>/
+├── VST3/       My Plugin Name.vst3
+├── AU/         My Plugin Name.component
+└── Standalone/ My Plugin Name.app
+```
+
+(Replace `MyPluginName` with your `project()` name and `My Plugin Name` with your `PRODUCT_NAME`.)
+
+## Dev workflow with Ableton Live
+
+The fastest loop is to symlink the build output directly into the system plugin folder so every rebuild is immediately visible — no manual copying.
+
+### One-time setup
+
+```bash
+# VST3 (Ableton 11+ on macOS defaults to VST3)
+ln -s "$(pwd)/build/MyPluginName_artefacts/Debug/VST3/My Plugin Name.vst3" \
+      ~/Library/Audio/Plug-Ins/VST3/
+
+# AU (optional)
+ln -s "$(pwd)/build/MyPluginName_artefacts/Debug/AU/My Plugin Name.component" \
+      ~/Library/Audio/Plug-Ins/Components/
+```
+
+Run from the project root. Adjust `MyPluginName` / `My Plugin Name` to match your project.
+
+### First-time scan in Ableton
+
+1. Open **Ableton Live → Preferences → Plug-Ins**.
+2. Enable **VST3 Plug-In Custom Folder** (if using VST3) or **Use Audio Units**.
+3. Click **Rescan**. Your plugin will appear in the browser.
+
+### Iterating
+
+```bash
+cmake --build build --config Debug
+```
+
+Rebuild, switch back to Ableton, and reload the device — no rescan needed because the symlink already points to the updated binary. If Ableton freezes or the plugin crashes, use **Option + drag** the device off the track to force-unload it, then reload after the fix.
+
+> **Note:** AU changes sometimes require killing and restarting `coreaudiod` (`sudo killall coreaudiod`) for the host to pick up the new binary.
+
 ## Updating JUCE
 
 1. Change `LIB_JUCE_TAG` in `CMakeLists.txt` to the new release tag.
