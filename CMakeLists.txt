@@ -4,7 +4,7 @@ project(MyPluginName VERSION 0.1.0)
 
 # ── macOS architecture ────────────────────────────────────────────────────────
 # Default to native arch (arm64 on Apple Silicon). Override with:
-#   cmake -Bbuild -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"  # universal binary
+#   cmake -Bbuild -DCMAKE_OSX_ARCHITECTURES=arm64"  # universal binary
 if(NOT CMAKE_OSX_ARCHITECTURES)
     set(CMAKE_OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}" CACHE STRING "macOS target arch" FORCE)
 endif()
