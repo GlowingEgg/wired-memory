@@ -42,13 +42,16 @@ Each plugin is its own standalone repo.
 ### 4. Configure and build
 
 ```bash
-cmake -Bbuild -DCMAKE_BUILD_TYPE=Debug
+cmake -Bbuild -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES=arm64
 cmake --build build --config Debug
 ```
 
 JUCE is downloaded into `Libs/` on the first configure run. Subsequent builds skip the download.
 
-`CMakeLists.txt` defaults to building for your machine's native architecture (arm64 on Apple Silicon, x86_64 on Intel). To build a universal binary instead:
+> **Apple Silicon — always pass `-DCMAKE_OSX_ARCHITECTURES=arm64` explicitly.**
+> CMake's `CMAKE_HOST_SYSTEM_PROCESSOR` can resolve to `x86_64` in some environments (Rosetta terminal, certain shell configs) even on an M-series Mac, producing an Intel binary that Ableton and other native-arm64 hosts silently reject. Passing the flag explicitly prevents this.
+
+To build a universal binary instead:
 
 ```bash
 cmake -Bbuild -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
@@ -112,7 +115,7 @@ Rebuild, switch back to Ableton, and reload the device — no rescan needed beca
 
 1. Change `LIB_JUCE_TAG` in `CMakeLists.txt` to the new release tag.
 2. Delete `build/` so CMake re-fetches: `rm -rf build/`
-3. Reconfigure: `cmake -Bbuild`
+3. Reconfigure: `cmake -Bbuild -DCMAKE_OSX_ARCHITECTURES=arm64`
 
 ## Directory layout
 
