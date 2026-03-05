@@ -48,6 +48,12 @@ cmake --build build --config Debug
 
 JUCE is downloaded into `Libs/` on the first configure run. Subsequent builds skip the download.
 
+`CMakeLists.txt` defaults to building for your machine's native architecture (arm64 on Apple Silicon, x86_64 on Intel). To build a universal binary instead:
+
+```bash
+cmake -Bbuild -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+```
+
 To generate an Xcode project:
 
 ```bash

@@ -2,6 +2,13 @@ cmake_minimum_required(VERSION 3.22)
 
 project(MyPluginName VERSION 0.1.0)
 
+# ── macOS architecture ────────────────────────────────────────────────────────
+# Default to native arch (arm64 on Apple Silicon). Override with:
+#   cmake -Bbuild -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"  # universal binary
+if(NOT CMAKE_OSX_ARCHITECTURES)
+    set(CMAKE_OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}" CACHE STRING "macOS target arch" FORCE)
+endif()
+
 # ── Fetch JUCE ────────────────────────────────────────────────────────────────
 
 set(LIB_JUCE_TAG "8.0.12")   # <-- update to latest tag when starting a new project
