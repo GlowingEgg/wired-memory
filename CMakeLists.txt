@@ -40,6 +40,10 @@ juce_add_plugin(MyPluginName
     VST3_CATEGORIES     "Fx"
 )
 
+# ── Generate JuceHeader.h ─────────────────────────────────────────────────────
+
+juce_generate_juce_header(MyPluginName)
+
 # ── Source files ──────────────────────────────────────────────────────────────
 
 target_sources(MyPluginName
