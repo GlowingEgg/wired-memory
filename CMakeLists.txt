@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.22)
 
 project(MyPluginName VERSION 0.1.0)
 
+# ── UI strategy: embed React/Vite app via WebBrowserComponent ─────────────────
+# Set to OFF to fall back to the plain paint()-based editor.
+option(USE_WEB_UI "Build and embed the React UI (requires Node/npm)" ON)
+
 # ── macOS architecture ────────────────────────────────────────────────────────
 # Default to native arch (arm64 on Apple Silicon). Override with:
 #   cmake -Bbuild -DCMAKE_OSX_ARCHITECTURES=arm64"  # universal binary
@@ -52,13 +56,66 @@ target_sources(MyPluginName
         Source/PluginEditor.cpp
 )
 
+# ── Web UI: build React app and embed as BinaryData ───────────────────────────
+
+if(USE_WEB_UI)
+    # Require npm
+    find_program(NPM_EXECUTABLE npm REQUIRED)
+
+    set(UI_DIR "${CMAKE_CURRENT_SOURCE_DIR}/ui")
+    set(UI_DIST "${UI_DIR}/dist")
+    set(UI_STAMP "${CMAKE_CURRENT_BINARY_DIR}/ui_build.stamp")
+
+    # Custom target: runs `npm install` then `npm run build` whenever sources change
+    file(GLOB_RECURSE UI_SOURCES CONFIGURE_DEPENDS
+        "${UI_DIR}/src/*.tsx"
+        "${UI_DIR}/src/*.ts"
+        "${UI_DIR}/src/*.css"
+        "${UI_DIR}/index.html"
+        "${UI_DIR}/package.json"
+    )
+    add_custom_command(
+        OUTPUT  "${UI_STAMP}"
+        COMMAND "${NPM_EXECUTABLE}" install --prefix "${UI_DIR}"
+        COMMAND "${NPM_EXECUTABLE}" run build --prefix "${UI_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${UI_STAMP}"
+        DEPENDS ${UI_SOURCES}
+        WORKING_DIRECTORY "${UI_DIR}"
+        COMMENT "Building React plugin UI..."
+    )
+    add_custom_target(PluginUIBuild DEPENDS "${UI_STAMP}")
+
+    # Glob built assets for BinaryData embedding
+    # (run cmake --build once to populate dist/ before reconfiguring)
+    file(GLOB UI_DIST_FILES CONFIGURE_DEPENDS "${UI_DIST}/*")
+
+    if(UI_DIST_FILES)
+        juce_add_binary_data(PluginUIData
+            HEADER_NAME  PluginUIData.h
+            NAMESPACE    PluginUIData
+            SOURCES      ${UI_DIST_FILES}
+        )
+        add_dependencies(PluginUIData PluginUIBuild)
+        set(WEB_UI_DATA_TARGET PluginUIData)
+        set(WEB_BROWSER_VALUE 1)
+    else()
+        message(WARNING
+            "USE_WEB_UI=ON but ui/dist/ is empty. "
+            "Run 'npm run build' in the ui/ directory, then re-run cmake.")
+        set(WEB_BROWSER_VALUE 0)
+    endif()
+else()
+    set(WEB_BROWSER_VALUE 0)
+endif()
+
 # ── Compile definitions ───────────────────────────────────────────────────────
 
 target_compile_definitions(MyPluginName
     PUBLIC
-        JUCE_WEB_BROWSER=0
+        JUCE_WEB_BROWSER=${WEB_BROWSER_VALUE}
         JUCE_USE_CURL=0
         JUCE_VST3_CAN_REPLACE_VST2=0
+        PLUGIN_USE_WEB_UI=$<BOOL:${USE_WEB_UI}>
 )
 
 # ── Link libraries ────────────────────────────────────────────────────────────
@@ -66,6 +123,8 @@ target_compile_definitions(MyPluginName
 target_link_libraries(MyPluginName
     PRIVATE
         juce::juce_audio_utils
+        juce::juce_gui_extra
+        $<$<BOOL:${WEB_UI_DATA_TARGET}>:${WEB_UI_DATA_TARGET}>
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
