@@ -1,6 +1,6 @@
 # juce-template
 
-Minimal JUCE + CMake audio plugin starter. Fetches JUCE automatically via `FetchContent` — no submodules. Targets VST3, AU, and Standalone on macOS.
+Minimal JUCE + CMake audio plugin starter. Fetches JUCE automatically via `FetchContent` — no submodules. Targets VST3, AU, and Standalone on macOS. UI is built as a React/Vite app and hosted natively inside the plugin window via JUCE 8's `WebBrowserComponent`.
 
 ## Quick start
 
@@ -39,7 +39,13 @@ git commit -m "Initial commit from juce-template"
 
 Each plugin is its own standalone repo.
 
-### 4. Configure and build
+### 4. Install UI dependencies
+
+```bash
+cd ui && npm install && cd ..
+```
+
+### 5. Configure and build
 
 ```bash
 cmake -Bbuild -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES=arm64
@@ -63,6 +69,114 @@ To generate an Xcode project:
 cmake -Bbuild -GXcode
 open build/MyPluginName.xcodeproj
 ```
+
+---
+
+## UI workflow
+
+The plugin UI is a **React/Vite app** hosted inside the plugin window via JUCE 8's `WebBrowserComponent` (WKWebView on macOS). The same code that runs at `localhost:5173` in your browser runs inside the DAW — no translation, no re-implementation.
+
+### Design in the browser (fastest iteration)
+
+```bash
+cd ui && npm run dev
+# open http://localhost:5173
+```
+
+`window.__JUCE__` doesn't exist in the browser, so `ui/src/plugin-bridge.ts` falls back to in-memory mock state. Edit React components and CSS — changes appear instantly via Vite HMR. No plugin rebuild needed.
+
+You can seed mock parameter values from URL params for shareable previews:
+
+```
+http://localhost:5173?gain=0.8&cutoff=0.3
+```
+
+### See the UI live inside the plugin
+
+Run the Vite dev server and a debug plugin build at the same time:
+
+```bash
+# terminal 1
+cd ui && npm run dev
+
+# terminal 2 — build and run the Standalone target
+cmake --build build --target MyPluginName_Standalone
+./build/MyPluginName_artefacts/Debug/Standalone/My\ Plugin\ Name.app/Contents/MacOS/My\ Plugin\ Name
+```
+
+In `DEBUG` mode, `PluginEditor.cpp` points `WebBrowserComponent` at `http://localhost:5173`. Vite HMR works inside the plugin window — save a CSS file and the plugin updates without a C++ rebuild.
+
+### Embed for release
+
+```bash
+cd ui && npm run build    # outputs to ui/dist/
+cmake -Bbuild -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64
+cmake --build build --config Release
+```
+
+On the first build after `npm run build`, cmake sees files in `ui/dist/` and embeds them as BinaryData via `juce_add_binary_data`. In `RELEASE` mode the editor loads from that embedded data — no external server, fully self-contained.
+
+> **Note on the two-step cmake:** cmake globs `ui/dist/` at configure time. If you add new asset files (fonts, images, etc.) after the initial configure you'll need to rerun `cmake -Bbuild ...` so the glob picks them up.
+
+### Disabling the web UI
+
+If you want to skip React entirely and use the traditional JUCE `paint()`-based editor:
+
+```bash
+cmake -Bbuild -DUSE_WEB_UI=OFF ...
+```
+
+The editor falls back to a plain centered text label. Useful for headless builds or platforms where WKWebView is unavailable.
+
+### Wiring up real parameters
+
+1. Declare parameters in `PluginProcessor` using `AudioProcessorValueTreeState`.
+
+2. Add relay members to `PluginEditor.h` — one per parameter:
+
+   ```cpp
+   juce::WebSliderRelay gainRelay { "gain" };
+   juce::WebToggleButtonRelay bypassRelay { "bypass" };
+   ```
+
+3. Wire them into `WebBrowserComponent::Options` in `PluginEditor.cpp`:
+
+   ```cpp
+   auto options = juce::WebBrowserComponent::Options{}
+       .withNativeIntegrationEnabled()
+       .withOptionsFrom(gainRelay)
+       .withOptionsFrom(bypassRelay)
+       .withResourceProvider(...);
+   ```
+
+4. In React, use `getSliderState` / `getToggleState` from `plugin-bridge.ts`:
+
+   ```ts
+   import { getSliderState } from "./plugin-bridge";
+
+   const gain = getSliderState("gain");   // works in browser (mock) and plugin (real)
+   gain.addListener(({ value }) => setDisplay(value));
+   gain.setNormalisedValue(0.75);
+   ```
+
+   The parameter names must match between the relay constructor and the bridge call.
+
+### Customising the look
+
+`ui/src/App.css` defines CSS custom properties at `:root`. Override them per-plugin without touching component code:
+
+```css
+:root {
+  --color-bg: #0d0d0d;
+  --color-accent: #ff6b35;
+  --plugin-width: 600px;
+  --plugin-height: 400px;
+}
+```
+
+See `docs/UI_STRATEGY.md` for the full strategy writeup.
+
+---
 
 ## Built plugin output
 
@@ -121,11 +235,21 @@ Rebuild, switch back to Ableton, and reload the device — no rescan needed beca
 
 ```
 juce-template/
-├── CMakeLists.txt      ← primary config — edit this first
+├── CMakeLists.txt          ← primary config — edit this first
+├── docs/
+│   └── UI_STRATEGY.md      ← full UI strategy writeup
+├── ui/                     ← React/Vite plugin UI
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx         ← root component — start editing here
+│   │   ├── App.css         ← CSS custom properties for theming
+│   │   └── plugin-bridge.ts ← window.__JUCE__ abstraction + mock
+│   ├── index.html
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
 ├── Source/
-│   ├── PluginProcessor.h
-│   ├── PluginProcessor.cpp
-│   ├── PluginEditor.h
-│   └── PluginEditor.cpp
+│   ├── PluginProcessor.h / .cpp   ← audio processing + parameter tree
+│   └── PluginEditor.h / .cpp      ← mounts WebBrowserComponent
 └── README.md
 ```
