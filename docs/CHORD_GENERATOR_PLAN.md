@@ -1,6 +1,6 @@
-# MIDI Chord Generator — Design Plan
+# After Hours — MIDI Chord Generator Design Document
 
-A MIDI-in / MIDI-out plugin that transforms single-note input into contextually harmonised chords within a chosen key. Emphasis on being **immediately playable without theory knowledge**, while offering a **deep complexity dimension** for jazz voicings.
+A MIDI-in / MIDI-out plugin that transforms single-note and multi-note input into contextually harmonised chords within a chosen key. The plugin is named **After Hours**. Emphasis on being **immediately playable without theory knowledge**, while offering a **deep complexity dimension** for jazz voicings.
 
 ---
 
@@ -8,25 +8,19 @@ A MIDI-in / MIDI-out plugin that transforms single-note input into contextually 
 
 > Someone who has never studied music theory should be able to sit down, pick a key, and reliably play every chord in that key by pressing a different single note — with one hand, in time, expressively.
 
-That constraint rules out anything that requires memorising intervals or holding modifier chords. The complexity axis must feel *gestural*, not intellectual.
+The complexity axis must feel *gestural*, not intellectual. Squeezing more keys should feel like squeezing more harmonic weight.
 
 ---
 
-## Interaction Model Options
+## Interaction Model — Chord Stacking via Simultaneous Notes
 
-Two approaches under consideration.
+### Scale Degree Remapping
 
----
+All 12 chromatic input notes are remapped to the 7 scale degrees of the chosen key. Every note is guaranteed in-key and triggers a chord. Black keys are not "wrong" — they advance to the next scale degree.
 
-### Model A — Scale Remap + Pitch Bend Complexity (recommended primary)
+**Mapping example (C major):**
 
-**How it works:**
-
-The plugin remaps all 12 chromatic input notes to the 7 scale degrees of the chosen key. The entire chromatic keyboard becomes a "key-locked" keyboard where every note is guaranteed in-key and triggers a chord.
-
-**Mapping (example: C major):**
-
-| Input note (any octave) | Chord triggered |
+| Input note | Chord triggered |
 |---|---|
 | C | I — C maj |
 | C# | II — D min |
@@ -35,44 +29,19 @@ The plugin remaps all 12 chromatic input notes to the 7 scale degrees of the cho
 | E | V — G dom |
 | F | VI — A min |
 | F# | VII — B dim |
-| G | I (up an octave) — C maj |
-| … | (wraps every 7 semitones) |
+| G | I (octave up) — C maj |
+| … | wraps every 7 semitones |
 
-Black keys are not "wrong" — they just jump to the next scale degree. The keyboard feels like it has only 7 unique destinations, infinitely tiled.
+### Complexity via Note Count
 
-**Complexity axis — Pitch Bend:**
-
-Pitch bend is an ideal complexity controller because it's physically accessible, returns to zero on release, and doesn't require a free hand.
-
-| Bend position | Chord quality |
-|---|---|
-| Center (0) | Triad (3 notes) |
-| Slightly up | 7th chord |
-| Mid up | 9th chord |
-| High up | 11th or 13th |
-| Slightly down | Suspended 2 or 4 version |
-| Low down | Altered dominant (b9, #11, b13) |
-
-Bend down = tension/colour variants. Bend up = stacking extensions. This maps naturally onto the body's intuition: "reaching up" for more complex, "pulling back" for simpler/tense.
-
-**Why it's good:** Single-handed playable. Pitch bend returns to zero automatically so you always land on triads by default. The complexity sweep is continuous and expressive.
-
----
-
-### Model B — Chord Stacking via Simultaneous Notes
-
-**How it works:**
-
-The same scale-degree remapping applies. The *number of keys held at once* determines chord complexity. The lowest held note is always treated as the chord root; any additional notes held simultaneously are interpreted as "add complexity" gestures rather than independent chord triggers.
+The *number of keys held simultaneously* determines chord complexity. The first struck note is the root; any additional notes held simultaneously are consumed as complexity signals and suppressed from the output. Only the generated chord is emitted.
 
 | Keys held | Chord quality |
 |---|---|
-| 1 key | Triad rooted on that scale degree |
-| 2 keys | 7th chord on the lowest key's degree |
-| 3 keys | 9th chord on the lowest key's degree |
-| 4+ keys | Full jazz voicing (11th/13th with idiomatic colour tones) |
-
-The upper notes in a multi-key grip are *not* treated as separate chord triggers — they are consumed as complexity signals and swallowed from the output. Only the chords generated from the lowest note are emitted.
+| 1 | Triad rooted on first-struck degree |
+| 2 | 7th chord |
+| 3 | 9th chord |
+| 4+ | Full jazz voicing (11th/13th with idiomatic colour tones) |
 
 **Example in C major:**
 - Hold C alone → C major triad
@@ -80,47 +49,55 @@ The upper notes in a multi-key grip are *not* treated as separate chord triggers
 - Hold C + D + E → Cmaj9
 - Hold C + D + E + F → Cmaj9(#11) or Cmaj13
 
-The interval or scale-degree distance between the held notes could optionally influence *which* flavour of extension is added (e.g. holding a note a 4th above the root nudges toward a sus4 quality), but a simpler first pass just uses note count.
+### Root Detection
 
-**Why it's good:** Entirely hands-on and physical — squeezing more keys feels like squeezing more harmonic weight. No mod wheel, no pitch bend, no extra controllers. Works well for players who naturally cluster their hand when they want "more". Each grip size has a consistent, reproducible result.
+A toggle switch on the UI selects between two root detection modes:
 
-**Interesting tension:** This mode *does* require two hands to reach higher complexity levels, but the gesture is intuitive in a way that the dual-zone split (Model C, removed) wasn't — you're not operating a hidden modifier system, you're just pressing *more of the same thing*.
+- **First Struck** *(default)*: Whichever note is physically pressed first is the root, regardless of its pitch. Strum up from C and C is always the root even if you're holding higher notes.
+- **Lowest Note**: The lowest-pitched held note is always the root, regardless of order struck. More predictable for players who tend to reach down for bass notes.
 
-**Caveats:**
-- Requires defining a clear "root detection" rule (lowest note wins, or first-struck note wins).
-- If a player accidentally brushes a second key their chord unexpectedly jumps up a complexity tier — needs a short grace window or a "minimum simultaneous duration" threshold before counting a multi-key grip.
-- Less suited to fast melodic runs where accidental polyphony is common.
+### Octave & Register Behaviour
 
----
+The first struck note determines both the **scale degree** (chord identity) and the **octave anchor** of the generated chord. Playing C2 produces a lower-register C major triad than playing C3. The plugin follows the player's register directly — no fixed-register override.
 
-## Shared Features Across All Models
+When stacking notes to add complexity, the **octave spread of the held notes influences the voicing spread** of the generated chord. If the root is C3 and the stacked notes reach up to D4, the chord tones are voiced across that pitch range rather than clustered in close position. This means a physically wide grip produces an open, spread voicing naturally — a tight grip produces a close voicing. The relationship between the player's hand shape and the sound is direct.
 
-### Key & Scale Selector
-- Root note (C–B) and scale type
-- Scales to support: Major, Natural Minor, Harmonic Minor, Melodic Minor, Dorian, Mixolydian, Lydian, Phrygian, Whole Tone, Diminished (octatonic)
+Concretely: the generated chord tones are distributed so that the lowest output note is near the root's octave and the highest output note is near the highest stacked note's octave, with inner voices filling the space according to the voicing engine settings.
 
-### Voicing Engine
-Controls *how* the notes of a chord are arranged in pitch space:
+### Polyphony Grace Window
 
-- **Spread**: Close position → Shell voicing → Open/Jazz spread
-- **Register**: Root octave offset — keeps generated chords in a musical register regardless of input octave
-- **Inversion**: Force root position, first inversion, second, auto-voice-lead
-- **Voice Leading**: When enabled, moves individual voices as little as possible between chord changes (smooth jazz movement)
-
-### Output Options
-- **Velocity passthrough** vs **fixed output velocity**
-- **Note duration**: Pass MIDI note-off immediately, or hold chords for a set duration (good for staccato playing → full legato chords)
-- **Arpeggiator mode**: Output chord tones as a rhythmic arpeggio instead of simultaneously
-- **Mono/Poly latch**: Hold last chord until next one is played
-
-### MIDI Learn
-All parameters mappable to any CC. Complexity can be wired to any mod source (mod wheel, expression pedal, breath controller, etc.) not just pitch bend.
+A short configurable threshold (default ~30ms) prevents accidental complexity bumps when rolling across keys. If a second key is pressed within the window of the first being released (fast monophonic playing), the plugin treats this as a single-note sequence rather than a held chord.
 
 ---
 
-## Suggested Chord Vocabulary (by degree)
+## Key & Scale Selector
 
-The plugin should know which extensions are idiomatic for each scale degree rather than mechanically stacking thirds. Example for major key:
+- Root note: C–B
+- Scale types: Major, Natural Minor, Harmonic Minor, Melodic Minor, Dorian, Mixolydian, Lydian, Phrygian, Whole Tone, Diminished (octatonic)
+
+---
+
+## Voicing Engine
+
+Controls how the notes of a chord are arranged in pitch space. Exposed as user-facing controls on the UI.
+
+- **Spread**: Close position → Shell voicing → Open/Jazz spread. Interacts with the octave-spread behaviour described above — the spread knob sets the *minimum* spread tendency; the player's hand position can open it further.
+- **Inversion**: Root position, first inversion, second inversion, or auto voice-lead (moves voices as little as possible between consecutive chords for smooth jazz movement).
+- **Voice Leading** toggle: When on, the voicing engine resolves each chord change with minimal voice movement. When off, chords are voiced independently each time.
+
+---
+
+## Output Passthrough
+
+All MIDI data that is not part of a stacking gesture passes through the plugin unmodified. Note-offs are forwarded immediately. Velocity, aftertouch, CC messages, and pitch bend all pass through untouched. No arpeggiator, no latch, no duration manipulation — players who want those behaviours can add them outside the plugin in their DAW.
+
+---
+
+## Chord Vocabulary (by degree)
+
+The plugin uses idiomatic extensions per scale degree rather than mechanically stacking thirds.
+
+**Major key:**
 
 | Degree | Triad | 7th | 9th | Jazz full |
 |---|---|---|---|---|
@@ -132,110 +109,101 @@ The plugin should know which extensions are idiomatic for each scale degree rath
 | VI | min | min7 | min9 | min11 |
 | VII | dim | min7b5 | min9b5 | min11b5 |
 
-This gives the plugin musical intelligence rather than just stacking dumb intervals.
+The same idiomatic table approach applies for each supported scale type.
 
 ---
 
-## Name Options
-
-All names lean into the **film noir, smoke-filled jazz club** atmosphere.
-
-| Name | Rationale |
-|---|---|
-| **After Hours** | Quintessential late-night jazz club phrase. Evocative, slightly illicit. Directly implies the setting. |
-| **The Changes** | Jazz insider slang for chord progressions ("playing the changes"). Perfectly on-brand for a chord plugin. Has a knowing, initiated quality. |
-| **Smoke & Ivory** | Piano keys + cigarette smoke. Most visually evocative of the noir atmosphere. Could be shortened to just **Ivory**. |
-| **Nocturn** | Deliberate near-misspelling of "Nocturne" (a piece written for night). Clean, elegant, slightly unsettling. Nods to Chopin without being classical-stuffy. |
-| **Voicing** | Literal double-meaning: chord voicing (music theory) + the act of giving voice to something (noir monologue quality). Sophisticated, minimal. |
-| **The Cipher** | Noir mystery + a musical "key" as a cipher/code for the uninitiated. Slightly cryptic. |
-| **House Keys** | Triple meaning: home key of a scale, piano keys, the keys to the speakeasy. Playful. |
-
-**Top pick:** **After Hours** — immediately conjures the right image, has zero ambiguity, looks great on a plugin faceplate.
-
-**Runner-up:** **The Changes** — best insider-baseball name for musicians who will get the joke.
-
----
-
-## Art Direction
+## UI Design
 
 ### Visual Concept: *"The Piano Bar at 2 AM"*
 
-The player is a lone pianist in a nearly empty club. The only light is warm amber spilling from a single bulb above the piano. Smoke drifts through the beam. Rain streaks the window behind them.
+A lone pianist in a nearly empty club. Warm amber light from a single bulb above the piano. Smoke drifts through the beam. Rain on the window.
 
 ### Colour Palette
 
 | Role | Colour | Notes |
 |---|---|---|
-| Background | `#0d0b0f` — near-black with a warm violet undertone | Feels like a dark room, not a computer screen |
+| Background | `#0d0b0f` — near-black, warm violet undertone | Dark room, not a computer screen |
 | Surface / panels | `#1a1620` — deep indigo-black | Slightly lighter, creates depth |
 | Accent / glow | `#c8922a` — warm amber-gold | Stage light, cigarette ember, brass fixture |
-| Secondary accent | `#5c8fa8` — desaturated steel blue | Neon sign outside, wet pavement reflection |
+| Secondary accent | `#5c8fa8` — desaturated steel blue | Neon sign, wet pavement reflection |
 | Text primary | `#e8dcc8` — aged ivory/cream | Piano keys, old paper |
 | Text muted | `#7a6e5c` — warm grey | Secondary labels |
 | Danger / altered | `#b04040` — dark crimson | Altered chords, tension indicators |
 
 ### Typography
 
-- **Display / plugin name**: Geometric art deco sans-serif. Think the lettering on a 1940s marquee. Bold, condensed, slightly wide letterforms. Suggestions: *Josefin Sans*, *Bebas Neue*, or a custom stencil feel.
-- **Labels / knobs**: Small monospace or a clean geometric sans, all caps, tracked out. Clinical contrast to the display face.
-- **Numeric readouts**: Mono, amber on dark, like an old LED display.
+- **Display / plugin name**: Geometric art deco sans-serif — bold, condensed, 1940s marquee feel. Suggestions: *Josefin Sans*, *Bebas Neue*, or a stencil variant.
+- **Labels / knobs**: Clean geometric sans, all caps, tracked out. Clinical contrast to the display face.
+- **Chord name readout**: Mono, amber on dark, like an old LED display.
 
-### UI Layout Concept
+### UI Layout
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    AFTER HOURS                          │  ← Art deco title, amber glow
-│  ─────────────────────────────────────────────────────  │
-│                                                         │
-│   KEY   [C ▾]   SCALE  [Major ▾]   MODE  [Remap ▾]    │  ← Top bar, clean
-│                                                         │
-│  ╔════════════════════════════════════════════════╗     │
-│  ║                                                ║     │
-│  ║    [ COMPLEXITY ]          [ SPREAD ]          ║     │
-│  ║       ╭────╮                  ╭────╮            ║     │
-│  ║       │    │                  │    │            ║     │  ← Large Bakelite-style knobs
-│  ║       ╰────╯                  ╰────╯            ║     │
-│  ║     0 ————●——————— 100      CLOSE ——●—— OPEN   ║     │
-│  ║                                                ║     │
-│  ║    [ REGISTER ]             [ VOICE LEAD ]     ║     │
-│  ║       ╭────╮                  ╭─ ON ─╮         ║     │
-│  ║       │    │                  │      │          ║     │
-│  ║       ╰────╯                  ╰──────╯          ║     │
-│  ╚════════════════════════════════════════════════╝     │
-│                                                         │
-│   [I]  [II]  [III]  [IV]  [V]  [VI]  [VII]            │  ← Chord degree display, lights up
-│    C    Dm    Em     F     G    Am    Bdim              │     when chord is playing
-│                                                         │
-│  ░░░░░ COMPLEXITY SOURCE: [PITCH BEND ▾] ░░░░░░░░░░░  │  ← Subtle footer
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                       AFTER HOURS                           │  ← Art deco, amber glow
+│  ───────────────────────────────────────────────────────    │
+│                                                             │
+│   KEY  [C ▾]    SCALE  [Major ▾]    ROOT  [FIRST ▾]        │  ← Top bar
+│                                                             │
+│  ╔══════════════════════════════════════════════════╗       │
+│  ║                                                  ║       │
+│  ║    [ SPREAD ]               [ INVERSION ]        ║       │
+│  ║       ╭────╮                   ╭────╮             ║       │  ← Bakelite knobs
+│  ║       │    │                   │    │             ║       │
+│  ║       ╰────╯                   ╰────╯             ║       │
+│  ║    CLOSE ——●—— OPEN         ROOT ——●—— AUTO       ║       │
+│  ║                                                  ║       │
+│  ║                  [ VOICE LEAD ]                  ║       │
+│  ║                   ╭── ON ──╮                     ║       │
+│  ║                   │        │                     ║       │
+│  ║                   ╰────────╯                     ║       │
+│  ╚══════════════════════════════════════════════════╝       │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │                   C m a j 9                         │   │  ← Chord name, large amber mono
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  C  C# D  D# E  F  F# G  G# A  A# B  C             │   │  ← Visual keyboard
+│  │  ██     ██        ██     ██     ██     ██            │   │     lit notes glow amber
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│   [I]  [II]  [III]  [IV]  [V]  [VI]  [VII]               │  ← Degree bulbs, amber on active
+│    C    Dm    Em     F     G    Am    Bdim                  │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+**Chord name display:** The current chord name (e.g. "Cmaj9", "G7(b9)") is shown prominently in a large amber monospace readout in the center of the UI. Updates immediately on each new chord.
+
+**Visual keyboard:** A one-octave (or slightly wider) keyboard diagram below the chord name illuminates the exact MIDI notes being output, not the input notes. The player sees which pitches the plugin is generating, in amber. This doubles as a learning tool — players start to recognise chord shapes on the keys.
+
+**Degree bulbs:** Seven small amber "bulbs" at the bottom (I through VII) illuminate when each scale degree is active, labelled with the actual chord name for the current key (C, Dm, Em, F, G, Am, Bdim). These are always visible so the player can see all seven chords available to them at a glance.
 
 ### Texture & Detail
 
-- **Knobs**: Dark phenolic Bakelite feel — deep brown-black with amber indicator dots. Not chrome/modern.
-- **Panel texture**: Subtle brushed dark metal or worn leather grain on the main surface. Almost invisible but tactile-feeling.
-- **Chord degree indicators**: Seven small amber "bulbs" at the bottom that light up (bright amber glow with bloom) when each chord is active. Like the lights on an old organ.
-- **Smoke effect**: A very subtle, slow-drifting particle layer or blurred gradient in the background — barely perceptible, just suggests atmosphere. Optional/toggle for performance.
-- **Logo treatment**: The plugin name in a vertical condensed stencil font, slightly distressed. Could be rendered as if it were on a marquee sign or a painted door.
+- **Knobs**: Dark phenolic Bakelite — deep brown-black with amber indicator dots. Not chrome.
+- **Panel texture**: Subtle brushed dark metal or worn leather grain. Almost invisible but tactile-feeling.
+- **Smoke effect**: Very slow-drifting semi-transparent gradient in the background. Barely perceptible. Optional toggle for performance.
+- **Logo treatment**: Plugin name in condensed stencil, slightly distressed — as if painted on a speakeasy door.
 
 ### Loading Screen / Splash (optional)
-A moody illustration: hands on piano keys seen from above, one cigarette resting on the ashtray, amber light from above. Monochromatic with single amber accent. Could be a simple vector illustration or a stylised photograph treatment.
+Hands on piano keys seen from above, one cigarette on the ashtray, amber light from above. Monochromatic with single amber accent. Simple vector illustration or stylised photograph treatment.
 
 ---
 
-## Implementation Roadmap (suggested phases)
+## Implementation Roadmap
 
-1. **Phase 1 — Core engine**: Scale degree remapping + triad output. Model A (pitch bend complexity) only. No UI beyond a key selector.
-2. **Phase 2 — Voicing intelligence**: Full chord vocabulary table per degree, spread/inversion controls, voice leading.
-3. **Phase 3 — Full UI**: Full art direction applied via React/Vite.
-4. **Phase 4 — Model B & C**: Velocity layers and dual-zone split as switchable modes.
-5. **Phase 5 — Polish**: Arpeggiator, MIDI learn, chord display, animated indicators.
+1. **Phase 1 — Core engine**: Scale degree remapping + chord stacking logic. Triad output only. Key and scale selector. No UI beyond a stub.
+2. **Phase 2 — Voicing intelligence**: Full chord vocabulary table per degree and scale type. Spread, inversion, and voice leading controls. Octave-spread-to-voicing logic.
+3. **Phase 3 — UI**: Full art direction in React/Vite. Chord name readout, visual keyboard, degree bulbs, all controls.
+4. **Phase 4 — Polish**: Grace window tuning, root detection toggle, smoke effect, splash screen.
 
 ---
 
 ## Open Design Questions
 
-- **Chord display**: Should the UI show the *name* of the chord being played (e.g. "Cmaj9")? Useful for learning, slightly clutters the dark aesthetic. Perhaps toggleable.
-- **Multi-note input in Model A**: If the user plays two notes simultaneously in remap mode, do we (a) play two separate chords, (b) treat the lower note as root and upper as extension, or (c) ignore the second note?
-- **Output octave range**: Should the plugin maintain the octave of the played note, or always produce chords in a fixed register (e.g. always middle-register piano voicings)?
-- **Black key behaviour in remap mode**: Option to keep black keys silent (effectively 7-note keyboard) vs always remapping them. Silent mode could feel like a "white-keys-only" guide.
+- **Black key behaviour**: Should black keys always remap to the next scale degree (every chromatic note is in-key), or should they go silent (giving the player an effective 7-note keyboard)? Silent mode could serve as a guide — you can only hit wrong notes if you deliberately aim for black keys.
+- **Grace window UX**: Should the polyphony grace window duration be user-exposed as a knob, or kept as a fixed internal constant? A knob adds flexibility but clutters the UI.
+- **Visual keyboard range**: Should the keyboard display show the exact output octave (scrolling or multi-octave), or always show a fixed one-octave window centred on middle C?
