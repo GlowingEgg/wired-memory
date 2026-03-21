@@ -14,7 +14,7 @@ That constraint rules out anything that requires memorising intervals or holding
 
 ## Interaction Model Options
 
-Three distinct approaches. They can coexist as switchable modes on the plugin.
+Two approaches under consideration.
 
 ---
 
@@ -59,44 +59,37 @@ Bend down = tension/colour variants. Bend up = stacking extensions. This maps na
 
 ---
 
-### Model B — Velocity Layers
+### Model B — Chord Stacking via Simultaneous Notes
 
 **How it works:**
 
-Same scale-degree remapping as Model A. Complexity is driven by note velocity rather than pitch bend, so it's entirely in the keystroke.
+The same scale-degree remapping applies. The *number of keys held at once* determines chord complexity. The lowest held note is always treated as the chord root; any additional notes held simultaneously are interpreted as "add complexity" gestures rather than independent chord triggers.
 
-| Velocity range | Chord quality |
+| Keys held | Chord quality |
 |---|---|
-| 1–40 (ghost note) | Root + 5th only (power chord / open) |
-| 41–80 (medium) | Triad |
-| 81–100 (strong) | 7th chord |
-| 101–115 (hard) | 9th chord |
-| 116–127 (fortissimo) | Full jazz voicing (9/11/13 with colour tone) |
+| 1 key | Triad rooted on that scale degree |
+| 2 keys | 7th chord on the lowest key's degree |
+| 3 keys | 9th chord on the lowest key's degree |
+| 4+ keys | Full jazz voicing (11th/13th with idiomatic colour tones) |
 
-A "Velocity Sensitivity" knob lets players calibrate this to their touch.
+The upper notes in a multi-key grip are *not* treated as separate chord triggers — they are consumed as complexity signals and swallowed from the output. Only the chords generated from the lowest note are emitted.
 
-**Why it's good:** Completely natural — playing harder should feel more intense. No knob-twiddling or extra hand gestures. Works well on weighted keys. Very live-friendly.
+**Example in C major:**
+- Hold C alone → C major triad
+- Hold C + D → Cmaj7
+- Hold C + D + E → Cmaj9
+- Hold C + D + E + F → Cmaj9(#11) or Cmaj13
 
-**Caveat:** Less good on unweighted synth-action keyboards where velocity control is imprecise.
+The interval or scale-degree distance between the held notes could optionally influence *which* flavour of extension is added (e.g. holding a note a 4th above the root nudges toward a sus4 quality), but a simpler first pass just uses note count.
 
----
+**Why it's good:** Entirely hands-on and physical — squeezing more keys feels like squeezing more harmonic weight. No mod wheel, no pitch bend, no extra controllers. Works well for players who naturally cluster their hand when they want "more". Each grip size has a consistent, reproducible result.
 
-### Model C — Dual-Zone Split (most tactile, most like playing piano)
+**Interesting tension:** This mode *does* require two hands to reach higher complexity levels, but the gesture is intuitive in a way that the dual-zone split (Model C, removed) wasn't — you're not operating a hidden modifier system, you're just pressing *more of the same thing*.
 
-**How it works:**
-
-The keyboard is split at a configurable split point (default: C3).
-
-- **Lower zone (left hand):** Modifier keys. Held silently — they don't trigger audio themselves.
-  - Each key in the lower zone represents a chord extension or colour: add7, add9, add11, add13, sus2, sus4, altered, lydian, etc.
-  - Up to 3 can be held simultaneously.
-- **Upper zone (right hand):** Chord roots. These trigger the chord, using the currently held modifiers.
-
-Holding nothing = triad. Holding the "7" modifier key = 7th chord. Holding "7 + 9" = ninth chord. Holding "7 + alt" = altered dominant.
-
-**Why it's good:** Directly mimics how jazz pianists think (left hand sets the colour, right hand plays the voicing). Extremely tactile — the physical distance between modifier and trigger reinforces the musical relationship. The most expressive of the three modes.
-
-**Caveat:** Requires two hands, which limits single-finger usability. Better for dedicated keyboard controllers than quick sketching.
+**Caveats:**
+- Requires defining a clear "root detection" rule (lowest note wins, or first-struck note wins).
+- If a player accidentally brushes a second key their chord unexpectedly jumps up a complexity tier — needs a short grace window or a "minimum simultaneous duration" threshold before counting a multi-key grip.
+- Less suited to fast melodic runs where accidental polyphony is common.
 
 ---
 
