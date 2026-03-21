@@ -64,10 +64,6 @@ When stacking notes to add complexity, the **octave spread of the held notes inf
 
 Concretely: the generated chord tones are distributed so that the lowest output note is near the root's octave and the highest output note is near the highest stacked note's octave, with inner voices filling the space according to the voicing engine settings.
 
-### Polyphony Grace Window
-
-A short configurable threshold (default ~30ms) prevents accidental complexity bumps when rolling across keys. If a second key is pressed within the window of the first being released (fast monophonic playing), the plugin treats this as a single-note sequence rather than a held chord.
-
 ---
 
 ## Key & Scale Selector
@@ -177,7 +173,7 @@ A lone pianist in a nearly empty club. Warm amber light from a single bulb above
 
 **Chord name display:** The current chord name (e.g. "Cmaj9", "G7(b9)") is shown prominently in a large amber monospace readout in the center of the UI. Updates immediately on each new chord.
 
-**Visual keyboard:** A one-octave (or slightly wider) keyboard diagram below the chord name illuminates the exact MIDI notes being output, not the input notes. The player sees which pitches the plugin is generating, in amber. This doubles as a learning tool — players start to recognise chord shapes on the keys.
+**Visual keyboard:** A one-octave keyboard diagram below the chord name illuminates the exact MIDI notes being output, not the input notes. The player sees which pitches the plugin is generating, in amber. This doubles as a learning tool — players start to recognise chord shapes on the keys.
 
 **Degree bulbs:** Seven small amber "bulbs" at the bottom (I through VII) illuminate when each scale degree is active, labelled with the actual chord name for the current key (C, Dm, Em, F, G, Am, Bdim). These are always visible so the player can see all seven chords available to them at a glance.
 
@@ -198,12 +194,5 @@ Hands on piano keys seen from above, one cigarette on the ashtray, amber light f
 1. **Phase 1 — Core engine**: Scale degree remapping + chord stacking logic. Triad output only. Key and scale selector. No UI beyond a stub.
 2. **Phase 2 — Voicing intelligence**: Full chord vocabulary table per degree and scale type. Spread, inversion, and voice leading controls. Octave-spread-to-voicing logic.
 3. **Phase 3 — UI**: Full art direction in React/Vite. Chord name readout, visual keyboard, degree bulbs, all controls.
-4. **Phase 4 — Polish**: Grace window tuning, root detection toggle, smoke effect, splash screen.
+4. **Phase 4 — Polish**: Root detection toggle, smoke effect, splash screen.
 
----
-
-## Open Design Questions
-
-- **Black key behaviour**: Should black keys always remap to the next scale degree (every chromatic note is in-key), or should they go silent (giving the player an effective 7-note keyboard)? Silent mode could serve as a guide — you can only hit wrong notes if you deliberately aim for black keys.
-- **Grace window UX**: Should the polyphony grace window duration be user-exposed as a knob, or kept as a fixed internal constant? A knob adds flexibility but clutters the UI.
-- **Visual keyboard range**: Should the keyboard display show the exact output octave (scrolling or multi-octave), or always show a fixed one-octave window centred on middle C?
