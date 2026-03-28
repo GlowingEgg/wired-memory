@@ -45,6 +45,8 @@ interface JuceBackend {
     addParameterChangeListener(cb: () => void): void;
     removeParameterChangeListener(cb: () => void): void;
   };
+  addEventListener(eventId: string, cb: (data: unknown) => void): void;
+  removeEventListener(eventId: string, cb: (data: unknown) => void): void;
 }
 
 declare global {
@@ -77,6 +79,8 @@ function getMockToggle(name: string) {
   }
   return mockToggles.get(name)!;
 }
+
+const mockEventListeners = new Map<string, Set<(data: unknown) => void>>();
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
@@ -137,6 +141,34 @@ export function getToggleState(name: string): ToggleState {
       return () => mock.listeners.delete(cb);
     },
   };
+}
+
+/**
+ * Listen to arbitrary events emitted from C++ via:
+ *   webBrowser->emitEventIfBrowserIsVisible("eventId", data)
+ *
+ * Returns an unsubscribe function — call it in a useEffect cleanup.
+ *
+ * Example:
+ *   useEffect(() => addBackendListener("chordChanged", (data) => {
+ *     setChord(data as ChordData);
+ *   }), []);
+ */
+export function addBackendListener(
+  eventId: string,
+  cb: (data: unknown) => void
+): () => void {
+  if (window.__JUCE__) {
+    window.__JUCE__.backend.addEventListener(eventId, cb);
+    return () => window.__JUCE__!.backend.removeEventListener(eventId, cb);
+  }
+
+  // Mock path: register in-memory; fire manually in dev via window.__mockEvent(id, data)
+  if (!mockEventListeners.has(eventId)) {
+    mockEventListeners.set(eventId, new Set());
+  }
+  mockEventListeners.get(eventId)!.add(cb);
+  return () => mockEventListeners.get(eventId)?.delete(cb);
 }
 
 /** True when running inside the plugin, false in standalone browser dev. */
