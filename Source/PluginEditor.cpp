@@ -57,7 +57,7 @@ MyPluginNameAudioProcessorEditor::MyPluginNameAudioProcessorEditor (MyPluginName
         // .withOptionsFrom (gainRelay)
   #if PLUGIN_USE_WEB_UI
         .withResourceProvider (serveEmbeddedFile,
-                               juce::URL { "https://juce.localhost/" })
+                               juce::String { "https://juce.localhost" })
   #endif
         ;
 

@@ -87,7 +87,7 @@ if(USE_WEB_UI)
 
     # Glob built assets for BinaryData embedding
     # (run cmake --build once to populate dist/ before reconfiguring)
-    file(GLOB UI_DIST_FILES CONFIGURE_DEPENDS "${UI_DIST}/*")
+    file(GLOB_RECURSE UI_DIST_FILES CONFIGURE_DEPENDS "${UI_DIST}/*")
 
     if(UI_DIST_FILES)
         juce_add_binary_data(PluginUIData

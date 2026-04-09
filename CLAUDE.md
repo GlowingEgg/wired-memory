@@ -98,6 +98,22 @@ The C++ build uses CMake. The UI build output is inlined into the plugin binary.
 
 ---
 
+## Design Systems
+
+Pre-built visual design systems live in `../design-systems/` (sibling to this directory).
+When creating a plugin with a specific design style, read `../design-systems/README.md` first.
+
+**Adoption workflow (brief):**
+1. Read `../design-systems/<name>/manifest.json` to understand what the system includes.
+2. Copy `tokens.css` → `ui/src/design.css`; add `import "./design.css"` at the top of `main.tsx`.
+3. Copy `components/` → `ui/src/components/`
+4. If `uses3D: true`, copy `scene/` → `ui/src/r3f/components/` and `theme.ts` → `ui/src/lib/theme.ts`
+5. Use components from `ui/src/components/` in `App.tsx` — they handle JUCE binding internally.
+
+Available design systems: `minimal`, `crystal`, `analog`, `neon`, `cosmic`, `modular`
+
+---
+
 ## File layout
 
 ```
@@ -105,8 +121,11 @@ Source/               C++ JUCE plugin (DSP + PluginEditor WebBrowser component)
 ui/
   src/
     App.tsx           UI entry point — edit this
-    App.css           UI styles
+    App.css           UI styles (layout only; tokens come from design.css when using a design system)
     plugin-bridge.ts  JUCE ↔ React parameter bridge
+    lib/
+      useJuceParam.ts   Hooks for binding React state to JUCE params (used by design system components)
+    components/         Design system components copied here at plugin creation time
     r3f/
       ThreeCanvas.tsx     Canvas wrapper — import this when adding 3D
       ExampleScene.tsx    Reference: spinning cube
