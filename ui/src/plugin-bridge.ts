@@ -3,14 +3,14 @@
  *
  * Single seam between React components and JUCE's window.__JUCE__ bridge.
  *
- * - Inside the plugin:  window.__JUCE__ exists → delegates to real relay objects
- * - In the browser:     window.__JUCE__ is absent → uses in-memory mock state
+ * - Inside the plugin:  window.__JUCE__ exists -> delegates to juce-framework-frontend
+ * - In the browser:     window.__JUCE__ is absent -> uses in-memory mock state
  *
- * Components should never call window.__JUCE__ directly — always go through
+ * Components should never call window.__JUCE__ directly -- always go through
  * the functions exported from this module.
  */
 
-// ── Types ─────────────────────────────────────────────────────────────────────
+// -- Types --------------------------------------------------------------------
 
 export type SliderListener = (value: number) => void;
 export type ToggleListener = (value: boolean) => void;
@@ -30,32 +30,7 @@ export interface ToggleState {
   addListener(cb: ToggleListener): () => void;
 }
 
-// ── JUCE window type (partial) ────────────────────────────────────────────────
-
-interface JuceBackend {
-  getSliderState(name: string): {
-    getNormalisedValue(): number;
-    setNormalisedValue(v: number): void;
-    addParameterChangeListener(cb: () => void): void;
-    removeParameterChangeListener(cb: () => void): void;
-  };
-  getToggleState(name: string): {
-    getValue(): boolean;
-    setValue(v: boolean): void;
-    addParameterChangeListener(cb: () => void): void;
-    removeParameterChangeListener(cb: () => void): void;
-  };
-  addEventListener(eventId: string, cb: (data: unknown) => void): void;
-  removeEventListener(eventId: string, cb: (data: unknown) => void): void;
-}
-
-declare global {
-  interface Window {
-    __JUCE__?: { backend: JuceBackend };
-  }
-}
-
-// ── Mock implementation (browser dev) ────────────────────────────────────────
+// -- Mock implementation (browser dev) ----------------------------------------
 
 const mockSliders = new Map<string, { normValue: number; listeners: Set<SliderListener> }>();
 
@@ -82,19 +57,27 @@ function getMockToggle(name: string) {
 
 const mockEventListeners = new Map<string, Set<(data: unknown) => void>>();
 
-// ── Public API ────────────────────────────────────────────────────────────────
+// -- JUCE frontend (bundled from juce-framework-frontend) ---------------------
+
+import * as JuceFrontend from "juce-framework-frontend";
+
+// Only use the real JUCE frontend when running inside the plugin
+const Juce = (typeof window !== "undefined" && (window as any).__JUCE__ !== undefined)
+  ? JuceFrontend
+  : null;
+
+// -- Public API ---------------------------------------------------------------
 
 export function getSliderState(name: string): SliderState {
-  if (window.__JUCE__) {
-    const relay = window.__JUCE__.backend.getSliderState(name);
+  if (Juce) {
+    const relay = Juce.getSliderState(name);
     return {
       getValue: () => relay.getNormalisedValue(),
       getNormalisedValue: () => relay.getNormalisedValue(),
       setNormalisedValue: (v) => relay.setNormalisedValue(v),
       addListener: (cb) => {
-        const wrapped = () => cb(relay.getNormalisedValue());
-        relay.addParameterChangeListener(wrapped);
-        return () => relay.removeParameterChangeListener(wrapped);
+        const id = relay.valueChangedEvent.addListener(() => cb(relay.getNormalisedValue()));
+        return () => relay.valueChangedEvent.removeListener(id);
       },
     };
   }
@@ -116,15 +99,14 @@ export function getSliderState(name: string): SliderState {
 }
 
 export function getToggleState(name: string): ToggleState {
-  if (window.__JUCE__) {
-    const relay = window.__JUCE__.backend.getToggleState(name);
+  if (Juce) {
+    const relay = Juce.getToggleState(name);
     return {
       getValue: () => relay.getValue(),
       setValue: (v) => relay.setValue(v),
       addListener: (cb) => {
-        const wrapped = () => cb(relay.getValue());
-        relay.addParameterChangeListener(wrapped);
-        return () => relay.removeParameterChangeListener(wrapped);
+        const id = relay.valueChangedEvent.addListener(() => cb(relay.getValue()));
+        return () => relay.valueChangedEvent.removeListener(id);
       },
     };
   }
@@ -144,23 +126,18 @@ export function getToggleState(name: string): ToggleState {
 }
 
 /**
- * Listen to arbitrary events emitted from C++ via:
- *   webBrowser->emitEventIfBrowserIsVisible("eventId", data)
- *
- * Returns an unsubscribe function — call it in a useEffect cleanup.
- *
- * Example:
- *   useEffect(() => addBackendListener("chordChanged", (data) => {
- *     setChord(data as ChordData);
- *   }), []);
+ * Listen to events emitted by the plugin via
+ *   webBrowser->emitEventIfBrowserIsVisible("eventId", data).
+ * Returns an unsubscribe function.
  */
 export function addBackendListener(
   eventId: string,
   cb: (data: unknown) => void
 ): () => void {
-  if (window.__JUCE__) {
-    window.__JUCE__.backend.addEventListener(eventId, cb);
-    return () => window.__JUCE__!.backend.removeEventListener(eventId, cb);
+  if (typeof window !== "undefined" && (window as any).__JUCE__?.backend) {
+    const backend = (window as any).__JUCE__.backend;
+    const handle = backend.addEventListener(eventId, cb);
+    return () => backend.removeEventListener(handle);
   }
 
   // Mock path: register in-memory; fire manually in dev via window.__mockEvent(id, data)
@@ -172,4 +149,5 @@ export function addBackendListener(
 }
 
 /** True when running inside the plugin, false in standalone browser dev. */
-export const isInsidePlugin = (): boolean => window.__JUCE__ !== undefined;
+export const isInsidePlugin = (): boolean =>
+  typeof window !== "undefined" && (window as any).__JUCE__ !== undefined;

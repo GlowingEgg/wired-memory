@@ -26,20 +26,39 @@ static juce::String mimeTypeForPath (const juce::String& path)
 static std::optional<juce::WebBrowserComponent::Resource>
 serveEmbeddedFile (const juce::String& url)
 {
-    // url arrives as "/index.html" or "/assets/main-abc123.js" etc.
-    // BinaryData resource names use underscores and strip the path prefix.
-    auto resourceName = url.trimCharactersAtStart ("/").replaceCharacter ('/', '_').replaceCharacter ('-', '_').replaceCharacter ('.', '_');
+    auto path = url.trimCharactersAtStart ("/");
 
+    // Root request → serve index.html
+    if (path.isEmpty())
+        path = "index.html";
+
+    // JUCE binary data strips directories, so match on filename only
+    auto filename = path.fromLastOccurrenceOf ("/", false, false);
+    if (filename.isEmpty())
+        filename = path;
+
+    // Look up by original filename to avoid replicating JUCE's name-mangling
     int size = 0;
-    const char* data = PluginUIData::getNamedResource (resourceName.toRawUTF8(), size);
+    const char* data = nullptr;
+
+    for (int i = 0; i < PluginUIData::namedResourceListSize; ++i)
+    {
+        if (filename == juce::String (PluginUIData::originalFilenames[i]))
+        {
+            data = PluginUIData::getNamedResource (PluginUIData::namedResourceList[i], size);
+            break;
+        }
+    }
 
     if (data == nullptr)
         return std::nullopt;
 
-    std::vector<std::byte> bytes (size);
+    auto mime = mimeTypeForPath (filename);
+
+    std::vector<std::byte> bytes ((size_t) size);
     std::memcpy (bytes.data(), data, (size_t) size);
 
-    return juce::WebBrowserComponent::Resource { std::move (bytes), mimeTypeForPath (url) };
+    return juce::WebBrowserComponent::Resource { std::move (bytes), mime };
 }
 #endif
 
@@ -49,28 +68,6 @@ MyPluginNameAudioProcessorEditor::MyPluginNameAudioProcessorEditor (MyPluginName
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
     setSize (400, 300);
-
-#if JUCE_WEB_BROWSER
-    auto options = juce::WebBrowserComponent::Options{}
-        .withNativeIntegrationEnabled()
-        // Uncomment and add relays once you have parameters:
-        // .withOptionsFrom (gainRelay)
-  #if PLUGIN_USE_WEB_UI
-        .withResourceProvider (serveEmbeddedFile,
-                               juce::String { "https://juce.localhost" })
-  #endif
-        ;
-
-    webBrowser = std::make_unique<juce::WebBrowserComponent> (options);
-    addAndMakeVisible (*webBrowser);
-
-  #if defined(DEBUG) || defined(_DEBUG)
-    // Hot-reload from Vite dev server: run `npm run dev` in the ui/ directory.
-    webBrowser->goToURL ("http://localhost:5173");
-  #elif PLUGIN_USE_WEB_UI
-    webBrowser->goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
-  #endif
-#endif
 }
 
 MyPluginNameAudioProcessorEditor::~MyPluginNameAudioProcessorEditor() {}
@@ -91,7 +88,29 @@ void MyPluginNameAudioProcessorEditor::paint (juce::Graphics& g)
 void MyPluginNameAudioProcessorEditor::resized()
 {
 #if JUCE_WEB_BROWSER
-    if (webBrowser != nullptr)
-        webBrowser->setBounds (getLocalBounds());
+    if (webBrowser == nullptr)
+    {
+        // Create WebView lazily — ensures component has a native peer
+        auto options = juce::WebBrowserComponent::Options{}
+            .withNativeIntegrationEnabled()
+            // Uncomment and add relays once you have parameters:
+            // .withOptionsFrom (gainRelay)
+      #if PLUGIN_USE_WEB_UI
+            .withResourceProvider (serveEmbeddedFile,
+                                   juce::String { "https://juce.localhost" })
+      #endif
+            ;
+
+        webBrowser = std::make_unique<juce::WebBrowserComponent> (options);
+        addAndMakeVisible (*webBrowser);
+
+      #if defined(DEBUG) || defined(_DEBUG)
+        webBrowser->goToURL ("http://localhost:5173");
+      #elif PLUGIN_USE_WEB_UI
+        webBrowser->goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
+      #endif
+    }
+
+    webBrowser->setBounds (getLocalBounds());
 #endif
 }
