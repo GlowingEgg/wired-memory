@@ -225,6 +225,30 @@ Rebuild, switch back to Ableton, and reload the device — no rescan needed beca
 
 > **Note:** AU changes sometimes require killing and restarting `coreaudiod` (`sudo killall coreaudiod`) for the host to pick up the new binary.
 
+## Troubleshooting
+
+### Ableton says "a sealed resource is missing or invalid"
+
+The CMake build now re-signs VST3 and AU bundles automatically after each build. If you still see this error (e.g. on an older checkout), re-sign manually:
+
+```bash
+codesign --force --deep --sign - "build/MyPluginName_artefacts/Debug/VST3/My Plugin Name.vst3"
+codesign --force --deep --sign - "build/MyPluginName_artefacts/Debug/AU/My Plugin Name.component"
+```
+
+### Ableton doesn't see the plugin after a fix
+
+Ableton caches plugin scan results. If a plugin fails to load once (wrong architecture, bad signature, crash), Ableton blacklists it — rescanning alone won't fix it. To clear the cache:
+
+```bash
+# Replace <version> with your Live version (e.g. "Live 12.1.5")
+rm ~/Library/Preferences/Ableton/Live\ <version>/PluginScanDb.txt
+```
+
+Then restart Ableton and rescan in **Preferences → Plug-Ins**.
+
+---
+
 ## Updating JUCE
 
 1. Change `LIB_JUCE_TAG` in `CMakeLists.txt` to the new release tag.

@@ -7,10 +7,15 @@ project(MyPluginName VERSION 0.1.0)
 option(USE_WEB_UI "Build and embed the React UI (requires Node/npm)" ON)
 
 # ── macOS architecture ────────────────────────────────────────────────────────
-# Default to native arch (arm64 on Apple Silicon). Override with:
-#   cmake -Bbuild -DCMAKE_OSX_ARCHITECTURES=arm64"  # universal binary
+# Default to arm64 on Apple Silicon (CMAKE_HOST_SYSTEM_PROCESSOR can report
+# x86_64 when CMake runs under Rosetta, producing the wrong binary).
 if(NOT CMAKE_OSX_ARCHITECTURES)
-    set(CMAKE_OSX_ARCHITECTURES "${CMAKE_HOST_SYSTEM_PROCESSOR}" CACHE STRING "macOS target arch" FORCE)
+    if(APPLE)
+        execute_process(COMMAND uname -m OUTPUT_VARIABLE _hw_arch OUTPUT_STRIP_TRAILING_WHITESPACE)
+    else()
+        set(_hw_arch "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+    endif()
+    set(CMAKE_OSX_ARCHITECTURES "${_hw_arch}" CACHE STRING "macOS target arch" FORCE)
 endif()
 
 # ── Fetch JUCE ────────────────────────────────────────────────────────────────
@@ -130,3 +135,19 @@ target_link_libraries(MyPluginName
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# ── macOS: re-sign plugin bundles after build ────────────────────────────────
+# JUCE's ad-hoc signature can become invalid after binary data is embedded.
+# Without re-signing, DAWs like Ableton reject the plugin with
+# "a sealed resource is missing or invalid".
+
+if(APPLE)
+    foreach(_fmt VST3 AU)
+        if(TARGET MyPluginName_${_fmt})
+            add_custom_command(TARGET MyPluginName_${_fmt} POST_BUILD
+                COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:MyPluginName_${_fmt}>"
+                COMMENT "Re-signing ${_fmt} bundle..."
+            )
+        endif()
+    endforeach()
+endif()
