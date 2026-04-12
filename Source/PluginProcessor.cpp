@@ -4,8 +4,24 @@
 MyPluginNameAudioProcessor::MyPluginNameAudioProcessor()
     : AudioProcessor (BusesProperties()
                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      .withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+                      .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
+}
+
+juce::AudioProcessorValueTreeState::ParameterLayout
+MyPluginNameAudioProcessor::createParameterLayout()
+{
+    juce::AudioProcessorValueTreeState::ParameterLayout layout;
+
+    // Example parameter — replace / extend with your own.
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "gain", 1 },
+        "Gain",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.5f));
+
+    return layout;
 }
 
 MyPluginNameAudioProcessor::~MyPluginNameAudioProcessor() {}
@@ -43,8 +59,9 @@ void MyPluginNameAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Audio processing goes here.
-    // buffer contains interleaved input samples; write your output into the same buffer.
+    // Example: apply gain parameter to all channels.
+    auto gainValue = apvts.getRawParameterValue ("gain")->load();
+    buffer.applyGain (gainValue);
 }
 
 bool MyPluginNameAudioProcessor::hasEditor() const { return true; }
@@ -54,8 +71,19 @@ juce::AudioProcessorEditor* MyPluginNameAudioProcessor::createEditor()
     return new MyPluginNameAudioProcessorEditor (*this);
 }
 
-void MyPluginNameAudioProcessor::getStateInformation (juce::MemoryBlock& /*destData*/) {}
-void MyPluginNameAudioProcessor::setStateInformation (const void* /*data*/, int /*sizeInBytes*/) {}
+void MyPluginNameAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
+}
+
+void MyPluginNameAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
+    if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
+        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+}
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {

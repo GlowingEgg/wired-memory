@@ -16,9 +16,14 @@ private:
     MyPluginNameAudioProcessor& audioProcessor;
 
 #if JUCE_WEB_BROWSER
-    // Relay objects expose AudioProcessorValueTreeState parameters to JS.
-    // Add one per parameter; the name string must match what plugin-bridge.ts uses.
-    // juce::WebSliderRelay gainRelay { "gain" };
+    // Relay objects expose APVTS parameters to the JS bridge.
+    // The name string must match what plugin-bridge.ts uses.
+    juce::WebSliderRelay gainRelay { "gain" };
+
+    // Attachments connect relays to APVTS parameters so that UI changes
+    // actually update the processor.  Without these, the relay talks to JS
+    // but the parameter keeps its default value.
+    juce::WebSliderParameterAttachment gainAttachment;
 
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 #endif

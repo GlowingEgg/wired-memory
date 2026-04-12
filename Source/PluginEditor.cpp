@@ -65,7 +65,11 @@ serveEmbeddedFile (const juce::String& url)
 // ── Editor ────────────────────────────────────────────────────────────────────
 
 MyPluginNameAudioProcessorEditor::MyPluginNameAudioProcessorEditor (MyPluginNameAudioProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p)
+    : AudioProcessorEditor (&p),
+      audioProcessor (p)
+#if JUCE_WEB_BROWSER
+      , gainAttachment (*p.apvts.getParameter ("gain"), gainRelay, nullptr)
+#endif
 {
     setSize (400, 300);
 }
@@ -93,8 +97,7 @@ void MyPluginNameAudioProcessorEditor::resized()
         // Create WebView lazily — ensures component has a native peer
         auto options = juce::WebBrowserComponent::Options{}
             .withNativeIntegrationEnabled()
-            // Uncomment and add relays once you have parameters:
-            // .withOptionsFrom (gainRelay)
+            .withOptionsFrom (gainRelay)
       #if PLUGIN_USE_WEB_UI
             .withResourceProvider (serveEmbeddedFile,
                                    juce::String { "https://juce.localhost" })
