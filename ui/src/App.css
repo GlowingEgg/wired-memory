@@ -408,3 +408,82 @@
   color: rgba(160, 120, 30, 0.5);
   letter-spacing: 0.08em;
 }
+
+/* ── Source selector bar ─────────────────────────────────────────────── */
+.wrd-source-bar {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  margin-bottom: 2px;
+}
+
+.wrd-source-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.wrd-source-selector--error {
+  color: rgba(180, 60, 30, 0.7);
+}
+
+.wrd-source-icon {
+  font-size: 10px;
+  color: rgba(60, 100, 160, 0.6);
+}
+
+.wrd-source-selector--error .wrd-source-icon {
+  color: rgba(180, 60, 30, 0.7);
+}
+
+.wrd-source-select {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.6);
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  backdrop-filter: blur(4px);
+}
+
+.wrd-source-select:focus {
+  border-color: rgba(60, 100, 160, 0.4);
+}
+
+.wrd-source-refresh {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  padding: 2px 6px;
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  line-height: 1;
+  backdrop-filter: blur(4px);
+}
+
+.wrd-source-refresh:hover {
+  background: rgba(255, 255, 255, 0.25);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+/* ── Active recording indicator ──────────────────────────────────────── */
+.wrd-rec--active {
+  color: rgba(220, 40, 40, 0.9) !important;
+  animation: wrd-rec-blink 1s infinite;
+}
+
+@keyframes wrd-rec-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

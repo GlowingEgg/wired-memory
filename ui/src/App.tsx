@@ -1,7 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { createNoise2D } from "simplex-noise";
-import { useJuceSlider } from "./lib/useJuceParam";
-import { isInsidePlugin } from "./plugin-bridge";
+import { useJuceSlider, useJuceToggle } from "./lib/useJuceParam";
+import {
+  isInsidePlugin,
+  addSourcesListener,
+  addStatusListener,
+  setSource,
+  refreshSources,
+  type AudioSourceInfo,
+} from "./plugin-bridge";
 import "./App.css";
 
 /* ── Seeded PRNG ── */
@@ -239,9 +246,9 @@ function Knob({ label, value, unit, color = "light" }: {
 }
 
 /* ── Toggle ── */
-function Toggle({ label, on }: { label: string; on: boolean }) {
+function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick?: () => void }) {
   return (
-    <div className="wrd-toggle">
+    <div className="wrd-toggle" onClick={onClick} style={onClick ? { cursor: "pointer" } : undefined}>
       <div className={`wrd-toggle-track ${on ? "wrd-toggle--on" : ""}`}>
         <div className="wrd-toggle-thumb" />
       </div>
@@ -280,10 +287,78 @@ function Scope() {
   );
 }
 
+/* ── Source selector dropdown ── */
+function SourceSelector({
+  sources,
+  selected,
+  onSelect,
+  permissionDenied,
+}: {
+  sources: AudioSourceInfo[];
+  selected: string;
+  onSelect: (bundleId: string) => void;
+  permissionDenied: boolean;
+}) {
+  if (permissionDenied) {
+    return (
+      <div className="wrd-source-selector wrd-source-selector--error">
+        <span className="wrd-source-icon">⚠</span>
+        <span>Screen Recording permission required</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wrd-source-selector">
+      <span className="wrd-source-icon">◉</span>
+      <select
+        className="wrd-source-select"
+        value={selected}
+        onChange={(e) => onSelect(e.target.value)}
+      >
+        <option value="">Select source...</option>
+        {sources.map((s) => (
+          <option key={s.bundleId} value={s.bundleId}>
+            {s.displayName}
+          </option>
+        ))}
+      </select>
+      <button className="wrd-source-refresh" onClick={() => refreshSources()} title="Refresh sources">
+        ↻
+      </button>
+    </div>
+  );
+}
+
 /* ── Main app ── */
 export default function App() {
   const gainParam = useJuceSlider("gain");
   const gainPct = (gainParam.value * 100).toFixed(0);
+
+  const captureParam = useJuceToggle("capture");
+  const monitorParam = useJuceToggle("monitor");
+
+  // SCK source state
+  const [sources, setSources] = useState<AudioSourceInfo[]>([]);
+  const [selectedSource, setSelectedSource] = useState("");
+  const [permissionDenied, setPermissionDenied] = useState(false);
+
+  useEffect(() => {
+    const unsub1 = addSourcesListener(setSources);
+    const unsub2 = addStatusListener((status) => {
+      setPermissionDenied(status.permissionDenied);
+    });
+
+    // Request initial sources list
+    refreshSources();
+
+    return () => { unsub1(); unsub2(); };
+  }, []);
+
+  const handleSourceSelect = useCallback((bundleId: string) => {
+    setSelectedSource(bundleId);
+    setSource(bundleId);
+  }, []);
 
   return (
     <div className="wrd-frame">
@@ -316,10 +391,20 @@ export default function App() {
           <div className="wrd-corner wrd-corner--bl" />
           <div className="wrd-corner wrd-corner--br" />
           <div className="wrd-vf-data">
-            <span className="wrd-rec">REC ●</span>
+            <span className={captureParam.value ? "wrd-rec wrd-rec--active" : "wrd-rec"}>REC ●</span>
             <span>SCStream</span>
-            <span>BROWSER</span>
+            <span>{selectedSource ? sources.find(s => s.bundleId === selectedSource)?.displayName ?? "..." : "---"}</span>
           </div>
+        </div>
+
+        {/* Source selector */}
+        <div className="wrd-glass wrd-source-bar">
+          <SourceSelector
+            sources={sources}
+            selected={selectedSource}
+            onSelect={handleSourceSelect}
+            permissionDenied={permissionDenied}
+          />
         </div>
 
         {/* Control panel */}
@@ -351,10 +436,10 @@ export default function App() {
             </div>
 
             <div className="wrd-toggles">
-              <Toggle label="CAPTURE" on={false} />
+              <Toggle label="CAPTURE" on={captureParam.value} onClick={() => captureParam.set(!captureParam.value)} />
               <Toggle label="LOOP" on={false} />
               <Toggle label="REVERSE" on={false} />
-              <Toggle label="MONITOR" on={true} />
+              <Toggle label="MONITOR" on={monitorParam.value} onClick={() => monitorParam.set(!monitorParam.value)} />
             </div>
           </div>
         </div>

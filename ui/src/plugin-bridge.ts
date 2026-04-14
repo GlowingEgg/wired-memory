@@ -151,3 +151,81 @@ export function addBackendListener(
 /** True when running inside the plugin, false in standalone browser dev. */
 export const isInsidePlugin = (): boolean =>
   typeof window !== "undefined" && (window as any).__JUCE__ !== undefined;
+
+// -- SCK Audio Capture --------------------------------------------------------
+
+export interface AudioSourceInfo {
+  bundleId: string;
+  displayName: string;
+}
+
+export interface SCKStatus {
+  permissionDenied: boolean;
+}
+
+/**
+ * Listen for source list updates pushed from C++.
+ * Returns an unsubscribe function.
+ */
+export function addSourcesListener(
+  cb: (sources: AudioSourceInfo[]) => void
+): () => void {
+  return addBackendListener("sck:sources", (data) => {
+    try {
+      const sources = typeof data === "string" ? JSON.parse(data) : data;
+      cb(sources as AudioSourceInfo[]);
+    } catch {
+      cb([]);
+    }
+  });
+}
+
+/**
+ * Listen for SCK status updates (permission, streaming state).
+ * Returns an unsubscribe function.
+ */
+export function addStatusListener(
+  cb: (status: SCKStatus) => void
+): () => void {
+  return addBackendListener("sck:status", (data) => {
+    try {
+      const status = typeof data === "string" ? JSON.parse(data) : data;
+      cb(status as SCKStatus);
+    } catch {
+      cb({ permissionDenied: false });
+    }
+  });
+}
+
+/**
+ * Tell the C++ backend to start capturing from the given app.
+ */
+export function setSource(bundleId: string): void {
+  if (Juce) {
+    Juce.getNativeFunction("sck_setSource")(bundleId);
+  } else {
+    console.log("[mock] setSource:", bundleId);
+  }
+}
+
+/**
+ * Ask the C++ backend to refresh the available sources list.
+ */
+export function refreshSources(): void {
+  if (Juce) {
+    Juce.getNativeFunction("sck_refreshSources")();
+  } else {
+    // In dev mode, fire a mock sources event
+    const mockSources: AudioSourceInfo[] = [
+      { bundleId: "com.google.Chrome", displayName: "Google Chrome" },
+      { bundleId: "com.apple.Safari", displayName: "Safari" },
+      { bundleId: "com.spotify.client", displayName: "Spotify" },
+    ];
+    setTimeout(() => {
+      const listeners = mockEventListeners.get("sck:sources");
+      if (listeners) {
+        listeners.forEach((cb) => cb(JSON.stringify(mockSources)));
+      }
+    }, 100);
+  }
+}

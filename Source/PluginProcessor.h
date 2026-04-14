@@ -1,6 +1,9 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <memory>
+
+class SCKAudioCapture;
 
 class WiredMemoryAudioProcessor : public juce::AudioProcessor
 {
@@ -37,8 +40,13 @@ public:
     // Parameter tree — add parameters in createParameterLayout().
     juce::AudioProcessorValueTreeState apvts;
 
+    /** Non-owning access to the capture engine (for the editor). */
+    SCKAudioCapture* getCapture() noexcept { return capture_.get(); }
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
+
+    std::unique_ptr<SCKAudioCapture> capture_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WiredMemoryAudioProcessor)
 };

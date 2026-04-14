@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "capture/SCKAudioCapture.h"
 
 #if JUCE_WEB_BROWSER
   #include <juce_gui_extra/juce_gui_extra.h>
@@ -68,7 +69,9 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
     : AudioProcessorEditor (&p),
       audioProcessor (p)
 #if JUCE_WEB_BROWSER
-      , gainAttachment (*p.apvts.getParameter ("gain"), gainRelay, nullptr)
+      , gainAttachment    (*p.apvts.getParameter ("gain"),    gainRelay,    nullptr)
+      , captureAttachment (*p.apvts.getParameter ("capture"), captureRelay, nullptr)
+      , monitorAttachment (*p.apvts.getParameter ("monitor"), monitorRelay, nullptr)
 #endif
 {
     setSize (560, 420);
@@ -94,10 +97,25 @@ void WiredMemoryAudioProcessorEditor::resized()
 #if JUCE_WEB_BROWSER
     if (webBrowser == nullptr)
     {
+        auto* capture = audioProcessor.getCapture();
+
         // Create WebView lazily — ensures component has a native peer
         auto options = juce::WebBrowserComponent::Options{}
             .withNativeIntegrationEnabled()
             .withOptionsFrom (gainRelay)
+            .withOptionsFrom (captureRelay)
+            .withOptionsFrom (monitorRelay)
+            // JS → C++: set capture source by bundle ID
+            .withNativeFunction ("sck_setSource", [capture] (auto& args, auto complete) {
+                if (capture && args.size() > 0 && args[0].isString())
+                    capture->setSource (args[0].toString().toStdString());
+                complete ({});
+            })
+            // JS → C++: request source list refresh
+            .withNativeFunction ("sck_refreshSources", [this] (auto&, auto complete) {
+                refreshAndEmitSources();
+                complete ({});
+            })
       #if PLUGIN_USE_WEB_UI
             .withResourceProvider (serveEmbeddedFile,
                                    juce::String { "https://juce.localhost" })
@@ -112,8 +130,44 @@ void WiredMemoryAudioProcessorEditor::resized()
       #elif PLUGIN_USE_WEB_UI
         webBrowser->goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
       #endif
+
+        // Send initial source list once webview is up
+        juce::MessageManager::callAsync ([this] { refreshAndEmitSources(); });
     }
 
     webBrowser->setBounds (getLocalBounds());
 #endif
 }
+
+#if JUCE_WEB_BROWSER
+void WiredMemoryAudioProcessorEditor::refreshAndEmitSources()
+{
+    auto* capture = audioProcessor.getCapture();
+    if (! capture || ! webBrowser)
+        return;
+
+    capture->getAvailableSources ([this] (std::vector<AudioSourceInfo> sources) {
+        if (! webBrowser)
+            return;
+
+        // Build a JSON array: [{"bundleId":"...","displayName":"..."},...]
+        juce::String json = "[";
+        for (size_t i = 0; i < sources.size(); ++i)
+        {
+            if (i > 0) json += ",";
+            json += "{\"bundleId\":\"" + juce::String (sources[i].bundleId).replace ("\"", "\\\"")
+                  + "\",\"displayName\":\"" + juce::String (sources[i].displayName).replace ("\"", "\\\"")
+                  + "\"}";
+        }
+        json += "]";
+
+        webBrowser->emitEventIfBrowserIsVisible ("sck:sources", json);
+
+        // Also emit permission status
+        auto* cap = audioProcessor.getCapture();
+        bool denied = cap ? cap->isPermissionDenied() : false;
+        webBrowser->emitEventIfBrowserIsVisible ("sck:status",
+            juce::String ("{\"permissionDenied\":") + (denied ? "true" : "false") + "}");
+    });
+}
+#endif

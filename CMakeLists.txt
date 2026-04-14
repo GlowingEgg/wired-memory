@@ -6,6 +6,11 @@ project(WiredMemory VERSION 0.1.0)
 # Set to OFF to fall back to the plain paint()-based editor.
 option(USE_WEB_UI "Build and embed the React UI (requires Node/npm)" ON)
 
+# ── macOS deployment target (ScreenCaptureKit requires 13+, audio capture 14+) ─
+if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.0" CACHE STRING "Minimum macOS version" FORCE)
+endif()
+
 # ── macOS architecture ────────────────────────────────────────────────────────
 # Default to arm64 on Apple Silicon (CMAKE_HOST_SYSTEM_PROCESSOR can report
 # x86_64 when CMake runs under Rosetta, producing the wrong binary).
@@ -59,6 +64,12 @@ target_sources(WiredMemory
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
+        Source/capture/SCKAudioCapture.mm
+)
+
+# Ensure the .mm file compiles as Objective-C++
+set_source_files_properties(Source/capture/SCKAudioCapture.mm
+    PROPERTIES COMPILE_FLAGS "-x objective-c++"
 )
 
 # ── Web UI: build React app and embed as BinaryData ───────────────────────────
@@ -135,6 +146,16 @@ target_link_libraries(WiredMemory
         juce::juce_recommended_lto_flags
         juce::juce_recommended_warning_flags
 )
+
+# ── macOS: link ScreenCaptureKit and CoreMedia frameworks ─────────────────────
+if(APPLE)
+    target_link_libraries(WiredMemory
+        PRIVATE
+            "-framework ScreenCaptureKit"
+            "-framework CoreMedia"
+            "-framework CoreAudio"
+    )
+endif()
 
 # ── macOS: re-sign plugin bundles after build ────────────────────────────────
 # JUCE's ad-hoc signature can become invalid after binary data is embedded.

@@ -1,11 +1,13 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "capture/SCKAudioCapture.h"
 
 WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
     : AudioProcessor (BusesProperties()
                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "Parameters", createParameterLayout())
+      apvts (*this, nullptr, "Parameters", createParameterLayout()),
+      capture_ (std::make_unique<SCKAudioCapture>())
 {
 }
 
@@ -14,12 +16,21 @@ WiredMemoryAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
-    // Example parameter — replace / extend with your own.
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "gain", 1 },
         "Gain",
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.5f));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "capture", 1 },
+        "Capture",
+        false));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "monitor", 1 },
+        "Monitor",
+        true));
 
     return layout;
 }
@@ -39,7 +50,11 @@ void WiredMemoryAudioProcessor::setCurrentProgram (int) {}
 const juce::String WiredMemoryAudioProcessor::getProgramName (int) { return {}; }
 void WiredMemoryAudioProcessor::changeProgramName (int, const juce::String&) {}
 
-void WiredMemoryAudioProcessor::prepareToPlay (double /*sampleRate*/, int /*samplesPerBlock*/) {}
+void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    if (capture_)
+        capture_->prepareForPlayback (sampleRate, samplesPerBlock);
+}
 void WiredMemoryAudioProcessor::releaseResources() {}
 
 bool WiredMemoryAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -59,9 +74,48 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 {
     juce::ScopedNoDenormals noDenormals;
 
-    // Example: apply gain parameter to all channels.
-    auto gainValue = apvts.getRawParameterValue ("gain")->load();
-    buffer.applyGain (gainValue);
+    const int numSamples  = buffer.getNumSamples();
+    const int numChannels = buffer.getNumChannels();
+
+    const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
+    const bool monitorOn = apvts.getRawParameterValue ("monitor")->load() >= 0.5f;
+
+    if (captureOn && capture_ && capture_->isStreamReady())
+    {
+        // Read captured audio from the ring buffer
+        float* ptrs[2] = {
+            buffer.getWritePointer (0),
+            buffer.getWritePointer (numChannels > 1 ? 1 : 0)
+        };
+
+        const int samplesRead = capture_->readSamples (ptrs, juce::jmin (numChannels, 2), numSamples);
+
+        // Zero any samples we couldn't read (ring buffer underrun)
+        if (samplesRead < numSamples)
+        {
+            for (int ch = 0; ch < numChannels; ++ch)
+                juce::FloatVectorOperations::clear (
+                    buffer.getWritePointer (ch) + samplesRead,
+                    numSamples - samplesRead);
+        }
+    }
+    else
+    {
+        // No capture active — silence
+        buffer.clear();
+    }
+
+    // If monitor is off, zero the output (capture still buffers above)
+    if (! monitorOn)
+    {
+        buffer.clear();
+    }
+    else
+    {
+        // Apply gain
+        const float gainValue = apvts.getRawParameterValue ("gain")->load();
+        buffer.applyGain (gainValue);
+    }
 }
 
 bool WiredMemoryAudioProcessor::hasEditor() const { return true; }
@@ -74,6 +128,16 @@ juce::AudioProcessorEditor* WiredMemoryAudioProcessor::createEditor()
 void WiredMemoryAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
+
+    // Persist the selected capture source alongside APVTS state
+    if (capture_)
+    {
+        juce::ValueTree captureState ("CaptureState");
+        captureState.setProperty ("sourceBundleId",
+            juce::String (capture_->getSelectedBundleId()), nullptr);
+        state.addChild (captureState, -1, nullptr);
+    }
+
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
 }
@@ -82,7 +146,19 @@ void WiredMemoryAudioProcessor::setStateInformation (const void* data, int sizeI
 {
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
     if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
-        apvts.replaceState (juce::ValueTree::fromXml (*xml));
+    {
+        auto tree = juce::ValueTree::fromXml (*xml);
+        apvts.replaceState (tree);
+
+        // Restore capture source
+        auto captureState = tree.getChildWithName ("CaptureState");
+        if (captureState.isValid() && capture_)
+        {
+            auto bundleId = captureState.getProperty ("sourceBundleId").toString().toStdString();
+            if (! bundleId.empty())
+                capture_->setSource (bundleId);
+        }
+    }
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
