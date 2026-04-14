@@ -2,11 +2,11 @@
 
 #include <JuceHeader.h>
 
-class MyPluginNameAudioProcessor : public juce::AudioProcessor
+class WiredMemoryAudioProcessor : public juce::AudioProcessor
 {
 public:
-    MyPluginNameAudioProcessor();
-    ~MyPluginNameAudioProcessor() override;
+    WiredMemoryAudioProcessor();
+    ~WiredMemoryAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -40,5 +40,5 @@ public:
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MyPluginNameAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WiredMemoryAudioProcessor)
 };

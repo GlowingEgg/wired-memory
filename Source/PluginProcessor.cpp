@@ -1,7 +1,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
-MyPluginNameAudioProcessor::MyPluginNameAudioProcessor()
+WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
     : AudioProcessor (BusesProperties()
                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
@@ -10,7 +10,7 @@ MyPluginNameAudioProcessor::MyPluginNameAudioProcessor()
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
-MyPluginNameAudioProcessor::createParameterLayout()
+WiredMemoryAudioProcessor::createParameterLayout()
 {
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
@@ -24,25 +24,25 @@ MyPluginNameAudioProcessor::createParameterLayout()
     return layout;
 }
 
-MyPluginNameAudioProcessor::~MyPluginNameAudioProcessor() {}
+WiredMemoryAudioProcessor::~WiredMemoryAudioProcessor() {}
 
-const juce::String MyPluginNameAudioProcessor::getName() const { return JucePlugin_Name; }
+const juce::String WiredMemoryAudioProcessor::getName() const { return JucePlugin_Name; }
 
-bool MyPluginNameAudioProcessor::acceptsMidi() const  { return false; }
-bool MyPluginNameAudioProcessor::producesMidi() const { return false; }
-bool MyPluginNameAudioProcessor::isMidiEffect() const { return false; }
-double MyPluginNameAudioProcessor::getTailLengthSeconds() const { return 0.0; }
+bool WiredMemoryAudioProcessor::acceptsMidi() const  { return false; }
+bool WiredMemoryAudioProcessor::producesMidi() const { return false; }
+bool WiredMemoryAudioProcessor::isMidiEffect() const { return false; }
+double WiredMemoryAudioProcessor::getTailLengthSeconds() const { return 0.0; }
 
-int MyPluginNameAudioProcessor::getNumPrograms() { return 1; }
-int MyPluginNameAudioProcessor::getCurrentProgram() { return 0; }
-void MyPluginNameAudioProcessor::setCurrentProgram (int) {}
-const juce::String MyPluginNameAudioProcessor::getProgramName (int) { return {}; }
-void MyPluginNameAudioProcessor::changeProgramName (int, const juce::String&) {}
+int WiredMemoryAudioProcessor::getNumPrograms() { return 1; }
+int WiredMemoryAudioProcessor::getCurrentProgram() { return 0; }
+void WiredMemoryAudioProcessor::setCurrentProgram (int) {}
+const juce::String WiredMemoryAudioProcessor::getProgramName (int) { return {}; }
+void WiredMemoryAudioProcessor::changeProgramName (int, const juce::String&) {}
 
-void MyPluginNameAudioProcessor::prepareToPlay (double /*sampleRate*/, int /*samplesPerBlock*/) {}
-void MyPluginNameAudioProcessor::releaseResources() {}
+void WiredMemoryAudioProcessor::prepareToPlay (double /*sampleRate*/, int /*samplesPerBlock*/) {}
+void WiredMemoryAudioProcessor::releaseResources() {}
 
-bool MyPluginNameAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool WiredMemoryAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
      && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
@@ -54,7 +54,7 @@ bool MyPluginNameAudioProcessor::isBusesLayoutSupported (const BusesLayout& layo
     return true;
 }
 
-void MyPluginNameAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
+void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                                                juce::MidiBuffer& /*midiMessages*/)
 {
     juce::ScopedNoDenormals noDenormals;
@@ -64,21 +64,21 @@ void MyPluginNameAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     buffer.applyGain (gainValue);
 }
 
-bool MyPluginNameAudioProcessor::hasEditor() const { return true; }
+bool WiredMemoryAudioProcessor::hasEditor() const { return true; }
 
-juce::AudioProcessorEditor* MyPluginNameAudioProcessor::createEditor()
+juce::AudioProcessorEditor* WiredMemoryAudioProcessor::createEditor()
 {
-    return new MyPluginNameAudioProcessorEditor (*this);
+    return new WiredMemoryAudioProcessorEditor (*this);
 }
 
-void MyPluginNameAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void WiredMemoryAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
 }
 
-void MyPluginNameAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void WiredMemoryAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xml (getXmlFromBinary (data, sizeInBytes));
     if (xml != nullptr && xml->hasTagName (apvts.state.getType()))
@@ -87,5 +87,5 @@ void MyPluginNameAudioProcessor::setStateInformation (const void* data, int size
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new MyPluginNameAudioProcessor();
+    return new WiredMemoryAudioProcessor();
 }

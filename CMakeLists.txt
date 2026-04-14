@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(MyPluginName VERSION 0.1.0)
+project(WiredMemory VERSION 0.1.0)
 
 # ── UI strategy: embed React/Vite app via WebBrowserComponent ─────────────────
 # Set to OFF to fall back to the plain paint()-based editor.
@@ -20,7 +20,7 @@ endif()
 
 # ── Fetch JUCE ────────────────────────────────────────────────────────────────
 
-set(LIB_JUCE_TAG "8.0.12")   # <-- update to latest tag when starting a new project
+set(LIB_JUCE_TAG "8.0.12")
 
 include(FetchContent)
 FetchContent_Declare(
@@ -34,12 +34,12 @@ FetchContent_MakeAvailable(JUCE)
 
 # ── Plugin target ─────────────────────────────────────────────────────────────
 
-juce_add_plugin(MyPluginName
-    PRODUCT_NAME        "My Plugin Name"           # display name in the DAW
-    COMPANY_NAME        "YourName"                 # your name or studio
-    BUNDLE_ID           "com.yourname.mypluginname"
-    PLUGIN_MANUFACTURER_CODE "Yrnm"               # exactly 4 chars, uppercase start
-    PLUGIN_CODE         "Mp01"                    # exactly 4 chars, unique per plugin
+juce_add_plugin(WiredMemory
+    PRODUCT_NAME        "Wired Memory"
+    COMPANY_NAME        "TachibanaLabs"
+    BUNDLE_ID           "com.tachibanalabs.wiredmemory"
+    PLUGIN_MANUFACTURER_CODE "Tclb"
+    PLUGIN_CODE         "Wm01"
     FORMATS             VST3 AU Standalone
     IS_SYNTH            FALSE
     NEEDS_MIDI_INPUT    FALSE
@@ -51,11 +51,11 @@ juce_add_plugin(MyPluginName
 
 # ── Generate JuceHeader.h ─────────────────────────────────────────────────────
 
-juce_generate_juce_header(MyPluginName)
+juce_generate_juce_header(WiredMemory)
 
 # ── Source files ──────────────────────────────────────────────────────────────
 
-target_sources(MyPluginName
+target_sources(WiredMemory
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginEditor.cpp
@@ -115,7 +115,7 @@ endif()
 
 # ── Compile definitions ───────────────────────────────────────────────────────
 
-target_compile_definitions(MyPluginName
+target_compile_definitions(WiredMemory
     PUBLIC
         JUCE_WEB_BROWSER=${WEB_BROWSER_VALUE}
         JUCE_USE_CURL=0
@@ -125,7 +125,7 @@ target_compile_definitions(MyPluginName
 
 # ── Link libraries ────────────────────────────────────────────────────────────
 
-target_link_libraries(MyPluginName
+target_link_libraries(WiredMemory
     PRIVATE
         juce::juce_audio_utils
         juce::juce_gui_extra
@@ -143,9 +143,9 @@ target_link_libraries(MyPluginName
 
 if(APPLE)
     foreach(_fmt VST3 AU)
-        if(TARGET MyPluginName_${_fmt})
-            add_custom_command(TARGET MyPluginName_${_fmt} POST_BUILD
-                COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:MyPluginName_${_fmt}>"
+        if(TARGET WiredMemory_${_fmt})
+            add_custom_command(TARGET WiredMemory_${_fmt} POST_BUILD
+                COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:WiredMemory_${_fmt}>"
                 COMMENT "Re-signing ${_fmt} bundle..."
             )
         endif()

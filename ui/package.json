@@ -1,5 +1,5 @@
 {
-  "name": "plugin-ui",
+  "name": "wired-memory-ui",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -13,6 +13,7 @@
     "@react-three/fiber": "^8.18.0",
     "juce-framework-frontend": "file:../Libs/JUCE/modules/juce_gui_extra/native/javascript",
     "react": "^18.3.1",
+    "simplex-noise": "^4.0.3",
     "react-dom": "^18.3.1",
     "three": "^0.183.2"
   },

@@ -64,19 +64,19 @@ serveEmbeddedFile (const juce::String& url)
 
 // ── Editor ────────────────────────────────────────────────────────────────────
 
-MyPluginNameAudioProcessorEditor::MyPluginNameAudioProcessorEditor (MyPluginNameAudioProcessor& p)
+WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAudioProcessor& p)
     : AudioProcessorEditor (&p),
       audioProcessor (p)
 #if JUCE_WEB_BROWSER
       , gainAttachment (*p.apvts.getParameter ("gain"), gainRelay, nullptr)
 #endif
 {
-    setSize (400, 300);
+    setSize (560, 420);
 }
 
-MyPluginNameAudioProcessorEditor::~MyPluginNameAudioProcessorEditor() {}
+WiredMemoryAudioProcessorEditor::~WiredMemoryAudioProcessorEditor() {}
 
-void MyPluginNameAudioProcessorEditor::paint (juce::Graphics& g)
+void WiredMemoryAudioProcessorEditor::paint (juce::Graphics& g)
 {
 #if JUCE_WEB_BROWSER
     // WebBrowserComponent covers the whole window; nothing to paint here.
@@ -85,11 +85,11 @@ void MyPluginNameAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillAll (getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId));
     g.setColour (juce::Colours::white);
     g.setFont (15.0f);
-    g.drawFittedText ("My Plugin Name", getLocalBounds(), juce::Justification::centred, 1);
+    g.drawFittedText ("Wired Memory", getLocalBounds(), juce::Justification::centred, 1);
 #endif
 }
 
-void MyPluginNameAudioProcessorEditor::resized()
+void WiredMemoryAudioProcessorEditor::resized()
 {
 #if JUCE_WEB_BROWSER
     if (webBrowser == nullptr)

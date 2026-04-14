@@ -3,17 +3,17 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class MyPluginNameAudioProcessorEditor : public juce::AudioProcessorEditor
+class WiredMemoryAudioProcessorEditor : public juce::AudioProcessorEditor
 {
 public:
-    explicit MyPluginNameAudioProcessorEditor (MyPluginNameAudioProcessor&);
-    ~MyPluginNameAudioProcessorEditor() override;
+    explicit WiredMemoryAudioProcessorEditor (WiredMemoryAudioProcessor&);
+    ~WiredMemoryAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    MyPluginNameAudioProcessor& audioProcessor;
+    WiredMemoryAudioProcessor& audioProcessor;
 
 #if JUCE_WEB_BROWSER
     // Relay objects expose APVTS parameters to the JS bridge.
@@ -28,5 +28,5 @@ private:
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 #endif
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MyPluginNameAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WiredMemoryAudioProcessorEditor)
 };
