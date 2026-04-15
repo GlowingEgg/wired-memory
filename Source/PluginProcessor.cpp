@@ -117,6 +117,27 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         const float gainValue = apvts.getRawParameterValue ("gain")->load();
         buffer.applyGain (gainValue);
     }
+
+    // Write waveform snapshot for UI visualisation
+    {
+        const float* readPtr = buffer.getReadPointer (0);
+        const int step = juce::jmax (1, numSamples / kWaveformSnapshotSize);
+
+        const juce::SpinLock::ScopedLockType lock (waveformLock_);
+        for (int i = 0; i < kWaveformSnapshotSize; ++i)
+            waveformSnapshot_[i] = readPtr[juce::jmin (i * step, numSamples - 1)];
+        waveformReady_ = true;
+    }
+}
+
+bool WiredMemoryAudioProcessor::readWaveformSnapshot (float* dest)
+{
+    const juce::SpinLock::ScopedLockType lock (waveformLock_);
+    if (! waveformReady_)
+        return false;
+    std::memcpy (dest, waveformSnapshot_.data(), sizeof (float) * kWaveformSnapshotSize);
+    waveformReady_ = false;
+    return true;
 }
 
 bool WiredMemoryAudioProcessor::hasEditor() const { return true; }

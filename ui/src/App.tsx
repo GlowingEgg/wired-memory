@@ -5,6 +5,7 @@ import {
   isInsidePlugin,
   addSourcesListener,
   addStatusListener,
+  addWaveformListener,
   setSource,
   refreshSources,
   type AudioSourceInfo,
@@ -287,6 +288,140 @@ function Scope() {
   );
 }
 
+/* ── Live waveform visualiser (incoming signal) ── */
+function LiveWaveform() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const bufferRef = useRef<number[]>(new Array(128).fill(0));
+
+  useEffect(() => {
+    const unsub = addWaveformListener((samples) => {
+      bufferRef.current = samples;
+    });
+    return unsub;
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let raf: number;
+    const draw = () => {
+      const w = canvas.width / dpr;
+      const h = canvas.height / dpr;
+      const samples = bufferRef.current;
+      const midY = h / 2;
+
+      ctx.clearRect(0, 0, w, h);
+
+      // Grid lines
+      ctx.strokeStyle = "rgba(60, 100, 160, 0.08)";
+      ctx.lineWidth = 1;
+      for (let y = 0; y < h; y += h / 6) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+      for (let x = 0; x < w; x += w / 8) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, h);
+        ctx.stroke();
+      }
+
+      // Center line
+      ctx.strokeStyle = "rgba(60, 100, 160, 0.15)";
+      ctx.beginPath();
+      ctx.moveTo(0, midY);
+      ctx.lineTo(w, midY);
+      ctx.stroke();
+
+      // Waveform fill
+      ctx.beginPath();
+      ctx.moveTo(0, midY);
+      for (let i = 0; i < samples.length; i++) {
+        const x = (i / (samples.length - 1)) * w;
+        const y = midY - samples[i] * midY * 0.9;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(w, midY);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(60, 100, 160, 0.1)";
+      ctx.fill();
+
+      // Waveform glow
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const x = (i / (samples.length - 1)) * w;
+        const y = midY - samples[i] * midY * 0.9;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "rgba(60, 100, 160, 0.15)";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+
+      // Waveform line
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const x = (i / (samples.length - 1)) * w;
+        const y = midY - samples[i] * midY * 0.9;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "rgba(60, 100, 160, 0.7)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      raf = requestAnimationFrame(draw);
+    };
+
+    const dpr = window.devicePixelRatio || 2;
+    const resizeCanvas = () => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * dpr;
+      canvas.height = rect.height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    };
+
+    resizeCanvas();
+    raf = requestAnimationFrame(draw);
+
+    const observer = new ResizeObserver(resizeCanvas);
+    observer.observe(canvas);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, []);
+
+  return (
+    <div className="wrd-glass wrd-monitor-live">
+      <div className="wrd-monitor-header">
+        <span className="wrd-monitor-label">INPUT</span>
+        <span className="wrd-monitor-tag">LIVE</span>
+      </div>
+      <canvas ref={canvasRef} className="wrd-monitor-canvas" />
+    </div>
+  );
+}
+
+/* ── Sample waveform stub (workbench) ── */
+function SampleWaveform() {
+  return (
+    <div className="wrd-glass wrd-monitor-sample">
+      <div className="wrd-monitor-header">
+        <span className="wrd-monitor-label">SAMPLE</span>
+        <span className="wrd-monitor-tag">IDLE</span>
+      </div>
+      <div className="wrd-monitor-empty">
+        <span>NO SAMPLE LOADED</span>
+      </div>
+    </div>
+  );
+}
+
 /* ── Source selector dropdown ── */
 function SourceSelector({
   sources,
@@ -384,17 +519,21 @@ export default function App() {
           <span className="wrd-topbar-time">--:--</span>
         </div>
 
-        {/* Center: viewfinder overlay */}
-        <div className="wrd-viewfinder">
-          <div className="wrd-corner wrd-corner--tl" />
-          <div className="wrd-corner wrd-corner--tr" />
-          <div className="wrd-corner wrd-corner--bl" />
-          <div className="wrd-corner wrd-corner--br" />
-          <div className="wrd-vf-data">
-            <span className={captureParam.value ? "wrd-rec wrd-rec--active" : "wrd-rec"}>REC ●</span>
-            <span>SCStream</span>
-            <span>{selectedSource ? sources.find(s => s.bundleId === selectedSource)?.displayName ?? "..." : "---"}</span>
+        {/* Monitor section — live input + sample workbench */}
+        <div className="wrd-monitor-section">
+          <div className="wrd-viewfinder">
+            <div className="wrd-corner wrd-corner--tl" />
+            <div className="wrd-corner wrd-corner--tr" />
+            <div className="wrd-corner wrd-corner--bl" />
+            <div className="wrd-corner wrd-corner--br" />
+            <div className="wrd-vf-data">
+              <span className={captureParam.value ? "wrd-rec wrd-rec--active" : "wrd-rec"}>REC ●</span>
+              <span>SCStream</span>
+              <span>{selectedSource ? sources.find(s => s.bundleId === selectedSource)?.displayName ?? "..." : "---"}</span>
+            </div>
           </div>
+          <LiveWaveform />
+          <SampleWaveform />
         </div>
 
         {/* Source selector */}

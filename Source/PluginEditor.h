@@ -3,7 +3,8 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class WiredMemoryAudioProcessorEditor : public juce::AudioProcessorEditor
+class WiredMemoryAudioProcessorEditor : public juce::AudioProcessorEditor,
+                                         private juce::Timer
 {
 public:
     explicit WiredMemoryAudioProcessorEditor (WiredMemoryAudioProcessor&);
@@ -13,6 +14,8 @@ public:
     void resized() override;
 
 private:
+    void timerCallback() override;
+
     WiredMemoryAudioProcessor& audioProcessor;
 
 #if JUCE_WEB_BROWSER

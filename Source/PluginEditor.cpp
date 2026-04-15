@@ -75,9 +75,34 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
 #endif
 {
     setSize (560, 420);
+    startTimerHz (30);
 }
 
-WiredMemoryAudioProcessorEditor::~WiredMemoryAudioProcessorEditor() {}
+WiredMemoryAudioProcessorEditor::~WiredMemoryAudioProcessorEditor()
+{
+    stopTimer();
+}
+
+void WiredMemoryAudioProcessorEditor::timerCallback()
+{
+#if JUCE_WEB_BROWSER
+    if (! webBrowser)
+        return;
+
+    float buf[WiredMemoryAudioProcessor::kWaveformSnapshotSize];
+    if (audioProcessor.readWaveformSnapshot (buf))
+    {
+        juce::String json = "[";
+        for (int i = 0; i < WiredMemoryAudioProcessor::kWaveformSnapshotSize; ++i)
+        {
+            if (i > 0) json += ",";
+            json += juce::String (buf[i], 4);
+        }
+        json += "]";
+        webBrowser->emitEventIfBrowserIsVisible ("sck:waveform", json);
+    }
+#endif
+}
 
 void WiredMemoryAudioProcessorEditor::paint (juce::Graphics& g)
 {

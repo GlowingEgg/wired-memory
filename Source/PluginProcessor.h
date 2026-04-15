@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <array>
 #include <memory>
 
 class SCKAudioCapture;
@@ -43,10 +44,19 @@ public:
     /** Non-owning access to the capture engine (for the editor). */
     SCKAudioCapture* getCapture() noexcept { return capture_.get(); }
 
+    /** Waveform snapshot for UI visualization.
+        Written by the audio thread in processBlock, read by the editor timer. */
+    static constexpr int kWaveformSnapshotSize = 128;
+    bool readWaveformSnapshot (float* dest);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     std::unique_ptr<SCKAudioCapture> capture_;
+
+    juce::SpinLock waveformLock_;
+    std::array<float, kWaveformSnapshotSize> waveformSnapshot_ {};
+    bool waveformReady_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WiredMemoryAudioProcessor)
 };

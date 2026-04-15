@@ -209,6 +209,50 @@ export function setSource(bundleId: string): void {
 }
 
 /**
+ * Listen for waveform snapshot data pushed from C++ (~30fps).
+ * Each snapshot is a Float32-style array of 128 sample values.
+ * Returns an unsubscribe function.
+ */
+export function addWaveformListener(
+  cb: (samples: number[]) => void
+): () => void {
+  if (isInsidePlugin()) {
+    return addBackendListener("sck:waveform", (data) => {
+      try {
+        const samples = typeof data === "string" ? JSON.parse(data) : data;
+        cb(samples as number[]);
+      } catch {
+        // ignore malformed data
+      }
+    });
+  }
+
+  // Dev mode: generate mock waveform data at ~30fps
+  let running = true;
+  let phase = 0;
+  const interval = setInterval(() => {
+    if (!running) return;
+    const samples: number[] = [];
+    for (let i = 0; i < 128; i++) {
+      const t = i / 128;
+      samples.push(
+        Math.sin(phase + t * Math.PI * 6) * 0.3
+        + Math.sin(phase * 1.7 + t * Math.PI * 14) * 0.15
+        + Math.sin(phase * 0.3 + t * Math.PI * 23) * 0.08
+        + (Math.random() - 0.5) * 0.04
+      );
+    }
+    phase += 0.15;
+    cb(samples);
+  }, 33);
+
+  return () => {
+    running = false;
+    clearInterval(interval);
+  };
+}
+
+/**
  * Ask the C++ backend to refresh the available sources list.
  */
 export function refreshSources(): void {
