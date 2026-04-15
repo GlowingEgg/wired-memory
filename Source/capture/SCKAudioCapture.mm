@@ -8,6 +8,12 @@
 #include <atomic>
 #include <mutex>
 #include <string>
+#include <os/log.h>
+
+static os_log_t wmLog() {
+    static os_log_t log = os_log_create ("com.tachibanalabs.wiredmemory", "capture");
+    return log;
+}
 
 // ── Forward-declare the ObjC helper ──────────────────────────────────────────
 
@@ -83,7 +89,7 @@ struct SCKAudioCapture::Impl
     if (_callbackCount < 5)
     {
         CMItemCount n = CMSampleBufferGetNumSamples (sampleBuffer);
-        NSLog (@"[WiredMemory] SCStream audio callback #%d: %ld frames", _callbackCount, (long) n);
+        os_log (wmLog(), "SCStream audio callback #%{public}d: %{public}ld frames", _callbackCount, (long) n);
         ++_callbackCount;
     }
 
@@ -165,7 +171,7 @@ struct SCKAudioCapture::Impl
 
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error
 {
-    NSLog (@"[WiredMemory] SCStream stopped with error: %@", error.localizedDescription);
+    os_log_error (wmLog(), "SCStream stopped with error: %{public}@", error.localizedDescription);
     if (_impl)
         _impl->streamReady.store (false, std::memory_order_seq_cst);
 }
@@ -191,7 +197,7 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
     {
         if (error)
         {
-            NSLog (@"[WiredMemory] SCShareableContent error (permission denied?): %@", error.localizedDescription);
+            os_log_error (wmLog(), "SCShareableContent error (permission denied?): %{public}@", error.localizedDescription);
             // Check for permission denial
             impl->permissionDenied.store (true, std::memory_order_relaxed);
 
@@ -397,11 +403,11 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
             if (error == nil)
             {
                 impl->streamReady.store (true, std::memory_order_release);
-                NSLog (@"[WiredMemory] SCStream started successfully (rate=%.0f)", impl->processorSampleRate);
+                os_log (wmLog(), "SCStream started successfully (rate=%{public}.0f)", impl->processorSampleRate);
             }
             else
             {
-                NSLog (@"[WiredMemory] SCStream start failed: %@", error.localizedDescription);
+                os_log_error (wmLog(), "SCStream start failed: %{public}@", error.localizedDescription);
                 dispatch_async (dispatch_get_main_queue(), ^{
                     impl->stream = nil;
                     impl->captureHelper = nil;
@@ -411,7 +417,7 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
     }
     @catch (NSException* exception)
     {
-        NSLog (@"[WiredMemory] SCStream exception: %@ — %@", exception.name, exception.reason);
+        os_log_error (wmLog(), "SCStream exception: %{public}@ — %{public}@", exception.name, exception.reason);
         impl->stream = nil;
         impl->captureHelper = nil;
         impl->streamReady.store (false, std::memory_order_seq_cst);
