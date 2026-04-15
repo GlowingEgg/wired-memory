@@ -97,8 +97,6 @@ void WiredMemoryAudioProcessorEditor::resized()
 #if JUCE_WEB_BROWSER
     if (webBrowser == nullptr)
     {
-        auto* capture = audioProcessor.getCapture();
-
         // Create WebView lazily — ensures component has a native peer
         auto options = juce::WebBrowserComponent::Options{}
             .withNativeIntegrationEnabled()
@@ -106,9 +104,10 @@ void WiredMemoryAudioProcessorEditor::resized()
             .withOptionsFrom (captureRelay)
             .withOptionsFrom (monitorRelay)
             // JS → C++: set capture source by bundle ID
-            .withNativeFunction ("sck_setSource", [capture] (auto& args, auto complete) {
-                if (capture && args.size() > 0 && args[0].isString())
-                    capture->setSource (args[0].toString().toStdString());
+            .withNativeFunction ("sck_setSource", [this] (auto& args, auto complete) {
+                auto* cap = audioProcessor.getCapture();
+                if (cap && args.size() > 0 && args[0].isString())
+                    cap->setSource (args[0].toString().toStdString());
                 complete ({});
             })
             // JS → C++: request source list refresh

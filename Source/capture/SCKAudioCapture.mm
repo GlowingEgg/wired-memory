@@ -282,32 +282,32 @@ std::string SCKAudioCapture::getSelectedBundleId() const
 void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
 {
     auto* impl = impl_.get();
-    NSString* targetBundleId = [NSString stringWithUTF8String:bundleId.c_str()];
 
-    // Find the matching application
-    SCRunningApplication* targetApp = nil;
-    for (SCRunningApplication* app in impl->cachedContent.applications)
+    @try
     {
-        if ([app.bundleIdentifier isEqualToString:targetBundleId])
+        NSString* targetBundleId = [NSString stringWithUTF8String:bundleId.c_str()];
+
+        // Find the matching application
+        SCRunningApplication* targetApp = nil;
+        for (SCRunningApplication* app in impl->cachedContent.applications)
         {
-            targetApp = app;
-            break;
+            if ([app.bundleIdentifier isEqualToString:targetBundleId])
+            {
+                targetApp = app;
+                break;
+            }
         }
-    }
 
-    if (targetApp == nil)
-        return;
+        if (targetApp == nil)
+            return;
 
-    SCContentFilter* filter = nil;
+        if (impl->cachedContent.displays.count == 0)
+            return;
 
-    // Actually, we want application-level audio capture.
-    // Use an app-level filter: include the target app, exclude nothing.
-    // On macOS 14+, SCContentFilter supports app-level audio capture.
-    // We create a filter that captures the display but includes only this app's audio.
-    if (impl->cachedContent.displays.count > 0)
-    {
         SCDisplay* display = impl->cachedContent.displays.firstObject;
-        // Include only the target app's windows
+
+        // Build a filter scoped to the target app
+        SCContentFilter* filter = nil;
         NSMutableArray<SCWindow*>* appWindows = [NSMutableArray array];
         for (SCWindow* window in impl->cachedContent.windows)
         {
@@ -325,63 +325,79 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
         }
         else
         {
-            // App has no windows — try including all apps except everything but this one
             filter = [[SCContentFilter alloc] initWithDisplay:display
                                         includingApplications:@[targetApp]
                                          exceptingWindows:@[]];
         }
+
+        if (filter == nil)
+            return;
+
+        // Configure the stream — audio only (we don't need video frames)
+        SCStreamConfiguration* config = [[SCStreamConfiguration alloc] init];
+        config.capturesAudio = YES;
+        config.excludesCurrentProcessAudio = YES;
+        config.channelCount  = 2;
+        config.sampleRate    = 48000;  // SCK default
+
+        // Minimize video overhead since we only want audio
+        config.width  = 2;
+        config.height = 2;
+        config.minimumFrameInterval = CMTimeMake (1, 1); // 1 fps minimum
+        config.showsCursor = NO;
+
+        // Create the capture helper
+        impl->captureHelper = [[SCKCaptureHelper alloc] init];
+        impl->captureHelper.impl = impl;
+
+        // Create and configure the stream
+        impl->stream = [[SCStream alloc] initWithFilter:filter
+                                         configuration:config
+                                              delegate:impl->captureHelper];
+
+        if (impl->stream == nil)
+        {
+            impl->captureHelper = nil;
+            return;
+        }
+
+        NSError* addOutputError = nil;
+        [impl->stream addStreamOutput:impl->captureHelper
+                                 type:SCStreamOutputTypeAudio
+                   sampleHandlerQueue:impl->audioQueue
+                                error:&addOutputError];
+
+        if (addOutputError)
+        {
+            impl->stream = nil;
+            impl->captureHelper = nil;
+            return;
+        }
+
+        // Reset the ring buffer before starting
+        impl->ringBuffer.reset();
+
+        // Start capture
+        [impl->stream startCaptureWithCompletionHandler:^(NSError* error) {
+            if (error == nil)
+            {
+                impl->streamReady.store (true, std::memory_order_release);
+            }
+            else
+            {
+                dispatch_async (dispatch_get_main_queue(), ^{
+                    impl->stream = nil;
+                    impl->captureHelper = nil;
+                });
+            }
+        }];
     }
-
-    // Configure the stream — audio only (we don't need video frames)
-    SCStreamConfiguration* config = [[SCStreamConfiguration alloc] init];
-    config.capturesAudio = YES;
-    config.excludesCurrentProcessAudio = YES;
-    config.channelCount  = 2;
-    config.sampleRate    = 48000;  // SCK default
-
-    // Minimize video overhead since we only want audio
-    config.width  = 2;
-    config.height = 2;
-    config.minimumFrameInterval = CMTimeMake (1, 1); // 1 fps minimum
-    config.showsCursor = NO;
-
-    // Create the capture helper
-    impl->captureHelper = [[SCKCaptureHelper alloc] init];
-    impl->captureHelper.impl = impl;
-
-    // Create and configure the stream
-    impl->stream = [[SCStream alloc] initWithFilter:filter
-                                     configuration:config
-                                          delegate:impl->captureHelper];
-
-    NSError* addOutputError = nil;
-    [impl->stream addStreamOutput:impl->captureHelper
-                             type:SCStreamOutputTypeAudio
-               sampleHandlerQueue:impl->audioQueue
-                            error:&addOutputError];
-
-    if (addOutputError)
+    @catch (NSException*)
     {
+        // ScreenCaptureKit can throw ObjC exceptions (permission issues,
+        // invalid filter, etc.) — catch them so they don't crash the host.
         impl->stream = nil;
         impl->captureHelper = nil;
-        return;
+        impl->streamReady.store (false, std::memory_order_seq_cst);
     }
-
-    // Reset the ring buffer before starting
-    impl->ringBuffer.reset();
-
-    // Start capture
-    [impl->stream startCaptureWithCompletionHandler:^(NSError* error) {
-        if (error == nil)
-        {
-            impl->streamReady.store (true, std::memory_order_release);
-        }
-        else
-        {
-            dispatch_async (dispatch_get_main_queue(), ^{
-                impl->stream = nil;
-                impl->captureHelper = nil;
-            });
-        }
-    }];
 }
