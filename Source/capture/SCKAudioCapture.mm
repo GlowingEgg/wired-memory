@@ -27,13 +27,13 @@ struct SCKAudioCapture::Impl
 
     std::string selectedBundleId;
 
-    // ObjC objects — only accessed from main thread + SCK callback
-    SCStream*           stream         = nil;
-    SCKCaptureHelper*   captureHelper  = nil;
-    dispatch_queue_t    audioQueue     = nil;
+    // ObjC objects — must be __strong so ARC retains them in this C++ struct
+    __strong SCStream*           stream         = nil;
+    __strong SCKCaptureHelper*   captureHelper  = nil;
+    __strong dispatch_queue_t    audioQueue     = nil;
 
     // Cache the shareable content for source switching without re-enumerating
-    SCShareableContent* cachedContent  = nil;
+    __strong SCShareableContent* cachedContent  = nil;
 
     Impl()
     {
