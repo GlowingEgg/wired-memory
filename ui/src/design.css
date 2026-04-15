@@ -58,6 +58,6 @@
   --glass-border:      rgba(255, 255, 255, 0.1);
 
   /* ── Plugin canvas ────────────────────────── */
-  --plugin-width:      560px;
-  --plugin-height:     420px;
+  --plugin-width:      100vw;
+  --plugin-height:     100vh;
 }

@@ -74,7 +74,9 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , monitorAttachment (*p.apvts.getParameter ("monitor"), monitorRelay, nullptr)
 #endif
 {
-    setSize (560, 420);
+    setSize (728, 546);
+    setResizable (true, true);
+    setResizeLimits (400, 300, 1200, 900);
     startTimerHz (30);
 }
 
