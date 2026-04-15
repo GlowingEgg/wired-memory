@@ -6,8 +6,7 @@ WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
     : AudioProcessor (BusesProperties()
                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
-      apvts (*this, nullptr, "Parameters", createParameterLayout()),
-      capture_ (std::make_unique<SCKAudioCapture>())
+      apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
 }
 
@@ -52,8 +51,10 @@ void WiredMemoryAudioProcessor::changeProgramName (int, const juce::String&) {}
 
 void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    if (capture_)
-        capture_->prepareForPlayback (sampleRate, samplesPerBlock);
+    if (! capture_)
+        capture_ = std::make_unique<SCKAudioCapture>();
+
+    capture_->prepareForPlayback (sampleRate, samplesPerBlock);
 }
 void WiredMemoryAudioProcessor::releaseResources() {}
 

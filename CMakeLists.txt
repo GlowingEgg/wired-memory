@@ -41,7 +41,7 @@ FetchContent_MakeAvailable(JUCE)
 
 juce_add_plugin(WiredMemory
     PRODUCT_NAME        "Wired Memory"
-    COMPANY_NAME        "TachibanaLabs"
+    COMPANY_NAME        "Khan"
     BUNDLE_ID           "com.tachibanalabs.wiredmemory"
     PLUGIN_MANUFACTURER_CODE "Tclb"
     PLUGIN_CODE         "Wm01"

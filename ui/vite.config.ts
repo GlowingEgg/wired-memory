@@ -3,14 +3,16 @@ import react from "@vitejs/plugin-react";
 import path from "path";
 
 // https://vite.dev/config/
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [react()],
   resolve: {
-    alias: {
-      // juce-framework-frontend is injected at runtime by the JUCE WebView.
-      // In dev mode we stub it so Vite doesn't choke on the import.
-      "juce-framework-frontend": path.resolve(__dirname, "src/juce-stub.ts"),
-    },
+    alias: command === "serve"
+      ? {
+          // Dev only: stub juce-framework-frontend so Vite's dep scanner
+          // doesn't choke when the JUCE native module isn't available.
+          "juce-framework-frontend": path.resolve(__dirname, "src/juce-stub.ts"),
+        }
+      : {},
   },
   // Build outputs to dist/ — this directory gets embedded as BinaryData by CMake.
   build: {
@@ -24,4 +26,4 @@ export default defineConfig({
     port: 5173,
     cors: true,
   },
-});
+}));
