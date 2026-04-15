@@ -11,7 +11,7 @@
 #include <os/log.h>
 
 static os_log_t wmLog() {
-    static os_log_t log = os_log_create ("com.tachibanalabs.wiredmemory", "capture");
+    static os_log_t log = os_log_create ("com.khan.wiredmemory", "capture");
     return log;
 }
 
@@ -43,7 +43,7 @@ struct SCKAudioCapture::Impl
 
     Impl()
     {
-        audioQueue = dispatch_queue_create ("com.tachibanalabs.wiredmemory.sckcapture",
+        audioQueue = dispatch_queue_create ("com.khan.wiredmemory.sckcapture",
                                             DISPATCH_QUEUE_SERIAL);
     }
 
