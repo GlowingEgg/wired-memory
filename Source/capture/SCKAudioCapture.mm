@@ -68,6 +68,9 @@ struct SCKAudioCapture::Impl
 @end
 
 @implementation SCKCaptureHelper
+{
+    int _callbackCount;
+}
 
 - (void)stream:(SCStream *)stream
     didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
@@ -75,6 +78,14 @@ struct SCKAudioCapture::Impl
 {
     if (type != SCStreamOutputTypeAudio || !_impl)
         return;
+
+    // Log first few callbacks for diagnostics
+    if (_callbackCount < 5)
+    {
+        CMItemCount n = CMSampleBufferGetNumSamples (sampleBuffer);
+        NSLog (@"[WiredMemory] SCStream audio callback #%d: %ld frames", _callbackCount, (long) n);
+        ++_callbackCount;
+    }
 
     // Get the audio buffer list from the sample buffer
     CMBlockBufferRef blockBuffer = nil;
@@ -154,6 +165,7 @@ struct SCKAudioCapture::Impl
 
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error
 {
+    NSLog (@"[WiredMemory] SCStream stopped with error: %@", error.localizedDescription);
     if (_impl)
         _impl->streamReady.store (false, std::memory_order_seq_cst);
 }
@@ -179,6 +191,7 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
     {
         if (error)
         {
+            NSLog (@"[WiredMemory] SCShareableContent error (permission denied?): %@", error.localizedDescription);
             // Check for permission denial
             impl->permissionDenied.store (true, std::memory_order_relaxed);
 
@@ -267,8 +280,10 @@ void SCKAudioCapture::prepareForPlayback (double sampleRate, int maxBlockSize)
     impl_->processorSampleRate = sampleRate;
     impl_->maxBlockSize        = maxBlockSize;
 
-    // Size ring buffer to ~4x max block size (power-of-two enforced internally)
-    const int capacity = maxBlockSize * 4;
+    // Size ring buffer for ~0.5s of audio to absorb bursty SCK callbacks
+    const int minCapacity = maxBlockSize * 4;
+    const int halfSecond  = static_cast<int> (sampleRate * 0.5);
+    const int capacity    = (halfSecond > minCapacity) ? halfSecond : minCapacity;
     impl_->ringBuffer.allocate (2, capacity);  // stereo
 }
 
@@ -338,7 +353,7 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
         config.capturesAudio = YES;
         config.excludesCurrentProcessAudio = YES;
         config.channelCount  = 2;
-        config.sampleRate    = 48000;  // SCK default
+        config.sampleRate    = (int) impl->processorSampleRate;
 
         // Minimize video overhead since we only want audio
         config.width  = 2;
@@ -382,9 +397,11 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
             if (error == nil)
             {
                 impl->streamReady.store (true, std::memory_order_release);
+                NSLog (@"[WiredMemory] SCStream started successfully (rate=%.0f)", impl->processorSampleRate);
             }
             else
             {
+                NSLog (@"[WiredMemory] SCStream start failed: %@", error.localizedDescription);
                 dispatch_async (dispatch_get_main_queue(), ^{
                     impl->stream = nil;
                     impl->captureHelper = nil;
@@ -392,10 +409,9 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
             }
         }];
     }
-    @catch (NSException*)
+    @catch (NSException* exception)
     {
-        // ScreenCaptureKit can throw ObjC exceptions (permission issues,
-        // invalid filter, etc.) — catch them so they don't crash the host.
+        NSLog (@"[WiredMemory] SCStream exception: %@ — %@", exception.name, exception.reason);
         impl->stream = nil;
         impl->captureHelper = nil;
         impl->streamReady.store (false, std::memory_order_seq_cst);
