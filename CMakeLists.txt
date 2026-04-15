@@ -67,9 +67,11 @@ target_sources(WiredMemory
         Source/capture/SCKAudioCapture.mm
 )
 
-# Ensure the .mm file compiles as Objective-C++
+# Ensure the .mm file compiles as Objective-C++ with ARC enabled
+# ARC is required so that ObjC pointers in the C++ Impl struct (SCStream*,
+# SCShareableContent*, etc.) are properly retained and released.
 set_source_files_properties(Source/capture/SCKAudioCapture.mm
-    PROPERTIES COMPILE_FLAGS "-x objective-c++"
+    PROPERTIES COMPILE_FLAGS "-x objective-c++ -fobjc-arc"
 )
 
 # ── Web UI: build React app and embed as BinaryData ───────────────────────────
