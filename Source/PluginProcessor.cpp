@@ -1,12 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "capture/SCKAudioCapture.h"
-#include <os/log.h>
-
-static os_log_t wmProcLog() {
-    static os_log_t log = os_log_create ("com.khan.wiredmemory", "processor");
-    return log;
-}
 
 WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -87,17 +81,6 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
     const bool monitorOn = apvts.getRawParameterValue ("monitor")->load() >= 0.5f;
 
-    // Rate-limited diagnostic: log processBlock state once per ~second
-    {
-        static int blockCount = 0;
-        if (++blockCount % 100 == 1)
-        {
-            bool streamReady = capture_ && capture_->isStreamReady();
-            os_log_error (wmProcLog(), "processBlock: capture=%{public}d monitor=%{public}d streamReady=%{public}d",
-                    (int) captureOn, (int) monitorOn, (int) streamReady);
-        }
-    }
-
     if (captureOn && capture_ && capture_->isStreamReady())
     {
         // Read captured audio from the ring buffer
@@ -106,16 +89,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             buffer.getWritePointer (numChannels > 1 ? 1 : 0)
         };
 
-        const int avail = capture_->getRingBufferAvailable();
         const int samplesRead = capture_->readSamples (ptrs, juce::jmin (numChannels, 2), numSamples);
-
-        // Rate-limited log of read results
-        {
-            static int readLogCount = 0;
-            if (++readLogCount % 100 == 1)
-                os_log_error (wmProcLog(), "ringbuf: avail=%{public}d read=%{public}d requested=%{public}d cap=%{public}p",
-                              avail, samplesRead, numSamples, (void*) capture_.get());
-        }
 
         // Zero any samples we couldn't read (ring buffer underrun)
         if (samplesRead < numSamples)

@@ -8,13 +8,6 @@
 #include <atomic>
 #include <mutex>
 #include <string>
-#include <os/log.h>
-
-static os_log_t wmLog() {
-    static os_log_t log = os_log_create ("com.khan.wiredmemory", "capture");
-    return log;
-}
-
 // ── Forward-declare the ObjC helper ──────────────────────────────────────────
 
 @class SCKCaptureHelper;
@@ -74,9 +67,6 @@ struct SCKAudioCapture::Impl
 @end
 
 @implementation SCKCaptureHelper
-{
-    int _callbackCount;
-}
 
 - (void)stream:(SCStream *)stream
     didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer
@@ -103,21 +93,8 @@ struct SCKAudioCapture::Impl
         kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
         &blockBuffer);
 
-    // Log first few callbacks for diagnostics (after we have buffer list info)
-    if (_callbackCount < 5)
-    {
-        CMItemCount n = CMSampleBufferGetNumSamples (sampleBuffer);
-        os_log_error (wmLog(), "callback #%{public}d: %{public}ld frames, status=%{public}d, numBuffers=%{public}u, capacity=%{public}d, impl=%{public}p",
-                      _callbackCount, (long) n, (int) status, (unsigned) audioBufferList.mNumberBuffers,
-                      _impl->ringBuffer.getCapacity(), (void*) _impl);
-        ++_callbackCount;
-    }
-
     if (status != noErr || audioBufferList.mNumberBuffers == 0)
     {
-        if (_callbackCount <= 10)
-            os_log_error (wmLog(), "callback: GetAudioBufferList failed status=%{public}d numBuffers=%{public}u",
-                          (int) status, (unsigned) audioBufferList.mNumberBuffers);
         if (blockBuffer) CFRelease (blockBuffer);
         return;
     }
@@ -159,10 +136,7 @@ struct SCKAudioCapture::Impl
         }
 
         const float* ptrs[2] = { left, right };
-        int wrote = _impl->ringBuffer.write (ptrs, 2, frames);
-        if (_callbackCount <= 5)
-            os_log_error (wmLog(), "callback write (interleaved): wrote=%{public}d of %{public}d, capacity=%{public}d impl=%{public}p",
-                          wrote, frames, _impl->ringBuffer.getCapacity(), (void*) _impl);
+        _impl->ringBuffer.write (ptrs, 2, frames);
     }
     else
     {
@@ -173,10 +147,7 @@ struct SCKAudioCapture::Impl
         for (int ch = 0; ch < channels; ++ch)
             ptrs[ch] = (const float*) audioBufferList.mBuffers[ch].mData;
 
-        int wrote = _impl->ringBuffer.write (ptrs, channels, (int) numFrames);
-        if (_callbackCount <= 5)
-            os_log_error (wmLog(), "callback write (non-interleaved): wrote=%{public}d of %{public}ld, capacity=%{public}d impl=%{public}p",
-                          wrote, (long) numFrames, _impl->ringBuffer.getCapacity(), (void*) _impl);
+        _impl->ringBuffer.write (ptrs, channels, (int) numFrames);
     }
 
     if (blockBuffer)
@@ -185,7 +156,6 @@ struct SCKAudioCapture::Impl
 
 - (void)stream:(SCStream *)stream didStopWithError:(NSError *)error
 {
-    os_log_error (wmLog(), "SCStream stopped with error: %{public}@", error.localizedDescription);
     if (_impl)
         _impl->streamReady.store (false, std::memory_order_seq_cst);
 }
@@ -203,8 +173,6 @@ SCKAudioCapture::~SCKAudioCapture() = default;
 
 void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
 {
-    os_log (wmLog(), "getAvailableSources called");
-
     auto* impl = impl_.get();
 
     [SCShareableContent getShareableContentExcludingDesktopWindows:NO
@@ -213,7 +181,6 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
     {
         if (error)
         {
-            os_log_error (wmLog(), "SCShareableContent error (permission denied?): %{public}@", error.localizedDescription);
             // Check for permission denial
             impl->permissionDenied.store (true, std::memory_order_relaxed);
 
@@ -253,8 +220,6 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
 
 void SCKAudioCapture::setSource (const std::string& bundleId)
 {
-    os_log (wmLog(), "setSource called with bundleId: %{public}s", bundleId.c_str());
-
     auto* impl = impl_.get();
 
     // Tear down existing stream first
@@ -299,16 +264,8 @@ bool SCKAudioCapture::isPermissionDenied() const noexcept
     return impl_->permissionDenied.load (std::memory_order_relaxed);
 }
 
-int SCKAudioCapture::getRingBufferAvailable() const noexcept
-{
-    return impl_->ringBuffer.getNumAvailable();
-}
-
 void SCKAudioCapture::prepareForPlayback (double sampleRate, int maxBlockSize)
 {
-    os_log_error (wmLog(), "prepareForPlayback: rate=%{public}.0f block=%{public}d impl=%{public}p",
-            sampleRate, maxBlockSize, (void*) impl_.get());
-
     impl_->processorSampleRate = sampleRate;
     impl_->maxBlockSize        = maxBlockSize;
 
@@ -328,8 +285,6 @@ std::string SCKAudioCapture::getSelectedBundleId() const
 
 void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
 {
-    os_log (wmLog(), "startStreamForBundleId: %{public}s", bundleId.c_str());
-
     auto* impl = impl_.get();
 
     @try
@@ -348,16 +303,10 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
         }
 
         if (targetApp == nil)
-        {
-            os_log_error (wmLog(), "startStream: target app not found for %{public}s", bundleId.c_str());
             return;
-        }
 
         if (impl->cachedContent.displays.count == 0)
-        {
-            os_log_error (wmLog(), "startStream: no displays found");
             return;
-        }
 
         SCDisplay* display = impl->cachedContent.displays.firstObject;
 
@@ -437,11 +386,9 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
             if (error == nil)
             {
                 impl->streamReady.store (true, std::memory_order_release);
-                os_log (wmLog(), "SCStream started successfully (rate=%{public}.0f)", impl->processorSampleRate);
             }
             else
             {
-                os_log_error (wmLog(), "SCStream start failed: %{public}@", error.localizedDescription);
                 dispatch_async (dispatch_get_main_queue(), ^{
                     impl->stream = nil;
                     impl->captureHelper = nil;
@@ -449,9 +396,8 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
             }
         }];
     }
-    @catch (NSException* exception)
+    @catch (NSException*)
     {
-        os_log_error (wmLog(), "SCStream exception: %{public}@ — %{public}@", exception.name, exception.reason);
         impl->stream = nil;
         impl->captureHelper = nil;
         impl->streamReady.store (false, std::memory_order_seq_cst);
