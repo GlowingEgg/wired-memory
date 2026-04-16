@@ -285,6 +285,11 @@ bool SCKAudioCapture::isPermissionDenied() const noexcept
     return impl_->permissionDenied.load (std::memory_order_relaxed);
 }
 
+int SCKAudioCapture::getRingBufferAvailable() const noexcept
+{
+    return impl_->ringBuffer.getNumAvailable();
+}
+
 void SCKAudioCapture::prepareForPlayback (double sampleRate, int maxBlockSize)
 {
     impl_->processorSampleRate = sampleRate;

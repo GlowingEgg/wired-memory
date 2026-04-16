@@ -73,6 +73,9 @@ public:
     /** Returns the bundle ID of the currently selected source (empty if none). */
     std::string getSelectedBundleId() const;
 
+    /** How many samples are available in the ring buffer right now. */
+    int getRingBufferAvailable() const noexcept;
+
     // Impl is public so the ObjC helper can reference it.
     // Only the .mm translation unit sees its definition.
     struct Impl;
