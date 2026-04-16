@@ -545,6 +545,190 @@
   color: rgba(0, 0, 0, 0.6);
 }
 
+/* ── Capture button ────────────────────────────────────────────────── */
+.wrd-capture-row {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 2px 0;
+  flex-shrink: 0;
+}
+
+.wrd-capture-line {
+  flex: 1;
+  height: 1px;
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.wrd-capture-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 14px 4px 6px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wrd-capture-btn:hover {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(220, 60, 50, 0.2);
+}
+
+.wrd-capture-btn:active {
+  transform: scale(0.97);
+}
+
+.wrd-capture-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wrd-capture-btn--recording {
+  background: rgba(255, 240, 240, 0.7);
+  border-color: rgba(220, 60, 50, 0.25);
+  box-shadow: 0 0 12px rgba(220, 60, 50, 0.15);
+}
+
+.wrd-capture-btn--recording:hover {
+  background: rgba(255, 235, 235, 0.8);
+  border-color: rgba(220, 60, 50, 0.35);
+}
+
+.wrd-capture-btn-ring {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.25s ease;
+}
+
+.wrd-capture-btn-ring--active {
+  border-color: rgba(220, 60, 50, 0.35);
+  box-shadow: 0 0 8px rgba(220, 60, 50, 0.2);
+  animation: wrd-ring-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes wrd-ring-pulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(220, 60, 50, 0.2); }
+  50% { box-shadow: 0 0 16px rgba(220, 60, 50, 0.35); }
+}
+
+.wrd-capture-btn-circle {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: rgba(220, 60, 50, 0.75);
+  transition: all 0.2s ease;
+}
+
+.wrd-capture-btn:hover .wrd-capture-btn-circle {
+  background: rgba(220, 60, 50, 0.9);
+  box-shadow: 0 0 6px rgba(220, 60, 50, 0.3);
+}
+
+.wrd-capture-btn-stop {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: rgba(220, 60, 50, 0.9);
+  box-shadow: 0 0 8px rgba(220, 60, 50, 0.4);
+  animation: wrd-stop-glow 1.2s ease-in-out infinite;
+}
+
+@keyframes wrd-stop-glow {
+  0%, 100% { box-shadow: 0 0 8px rgba(220, 60, 50, 0.4); }
+  50% { box-shadow: 0 0 14px rgba(220, 60, 50, 0.65); }
+}
+
+.wrd-capture-btn-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.45);
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.wrd-capture-btn--recording .wrd-capture-btn-label {
+  color: rgba(220, 60, 50, 0.75);
+}
+
+/* ── Sample viewer states ──────────────────────────────────────────── */
+.wrd-monitor-tag--rec {
+  color: rgba(220, 60, 50, 0.8) !important;
+  animation: wrd-rec-blink 1s infinite;
+}
+
+.wrd-monitor-tag--proc {
+  color: rgba(180, 140, 40, 0.8) !important;
+  animation: wrd-proc-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes wrd-proc-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.wrd-monitor-recording {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wrd-recording-bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 28px;
+}
+
+.wrd-recording-bar {
+  width: 3px;
+  height: 4px;
+  background: rgba(220, 60, 50, 0.5);
+  border-radius: 1px;
+  animation: wrd-bar-bounce 1.2s ease-in-out infinite;
+}
+
+@keyframes wrd-bar-bounce {
+  0%, 100% { height: 4px; background: rgba(220, 60, 50, 0.3); }
+  50% { height: 20px; background: rgba(220, 60, 50, 0.6); }
+}
+
+.wrd-recording-text {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  color: rgba(220, 60, 50, 0.5);
+  letter-spacing: 0.12em;
+  animation: wrd-rec-blink 1s infinite;
+}
+
+.wrd-monitor-processing {
+  flex-direction: column;
+}
+
+.wrd-processing-text {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  color: rgba(180, 140, 40, 0.5);
+  letter-spacing: 0.12em;
+  animation: wrd-proc-pulse 1.5s ease-in-out infinite;
+}
+
+.wrd-sample-canvas {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: block;
+}
+
 /* ── Active recording indicator ──────────────────────────────────────── */
 .wrd-rec--active {
   color: rgba(220, 40, 40, 0.9) !important;

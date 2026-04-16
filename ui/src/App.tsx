@@ -407,17 +407,136 @@ function LiveWaveform() {
   );
 }
 
-/* ── Sample waveform stub (workbench) ── */
-function SampleWaveform() {
+/* ── Capture button ── */
+type CaptureState = "idle" | "recording" | "processing" | "done";
+
+function CaptureButton({ state, onClick }: { state: CaptureState; onClick: () => void }) {
+  const isRecording = state === "recording";
+  return (
+    <div className="wrd-capture-row">
+      <div className="wrd-capture-line" />
+      <button
+        className={`wrd-capture-btn ${isRecording ? "wrd-capture-btn--recording" : ""}`}
+        onClick={onClick}
+        disabled={state === "processing"}
+      >
+        <div className={`wrd-capture-btn-ring ${isRecording ? "wrd-capture-btn-ring--active" : ""}`}>
+          <div className={isRecording ? "wrd-capture-btn-stop" : "wrd-capture-btn-circle"} />
+        </div>
+        <span className="wrd-capture-btn-label">
+          {state === "idle" && "REC"}
+          {state === "recording" && "STOP"}
+          {state === "processing" && "..."}
+          {state === "done" && "REC"}
+        </span>
+      </button>
+      <div className="wrd-capture-line" />
+    </div>
+  );
+}
+
+/* ── Sample waveform viewer ── */
+function SampleWaveform({ state, sampleData }: { state: CaptureState; sampleData: number[] }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (state !== "done" || sampleData.length === 0) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 2;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    const w = rect.width;
+    const h = rect.height;
+    const midY = h / 2;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Grid
+    ctx.strokeStyle = "rgba(60, 100, 160, 0.08)";
+    ctx.lineWidth = 1;
+    for (let y = 0; y < h; y += h / 4) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+
+    // Center line
+    ctx.strokeStyle = "rgba(60, 100, 160, 0.15)";
+    ctx.beginPath(); ctx.moveTo(0, midY); ctx.lineTo(w, midY); ctx.stroke();
+
+    // Waveform fill
+    ctx.beginPath();
+    ctx.moveTo(0, midY);
+    for (let i = 0; i < sampleData.length; i++) {
+      const x = (i / (sampleData.length - 1)) * w;
+      const y = midY - sampleData[i] * midY * 0.85;
+      ctx.lineTo(x, y);
+    }
+    ctx.lineTo(w, midY);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(40, 140, 170, 0.12)";
+    ctx.fill();
+
+    // Waveform glow
+    ctx.beginPath();
+    for (let i = 0; i < sampleData.length; i++) {
+      const x = (i / (sampleData.length - 1)) * w;
+      const y = midY - sampleData[i] * midY * 0.85;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "rgba(40, 140, 170, 0.2)";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    // Waveform line
+    ctx.beginPath();
+    for (let i = 0; i < sampleData.length; i++) {
+      const x = (i / (sampleData.length - 1)) * w;
+      const y = midY - sampleData[i] * midY * 0.85;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.strokeStyle = "rgba(40, 140, 170, 0.75)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }, [state, sampleData]);
+
+  const tagLabel = state === "recording" ? "RECORDING" : state === "processing" ? "PROCESSING" : state === "done" ? "LOADED" : "IDLE";
+  const tagClass = state === "recording" ? "wrd-monitor-tag--rec" : state === "processing" ? "wrd-monitor-tag--proc" : "";
+
   return (
     <div className="wrd-glass wrd-monitor-sample">
       <div className="wrd-monitor-header">
         <span className="wrd-monitor-label">SAMPLE</span>
-        <span className="wrd-monitor-tag">IDLE</span>
+        <span className={`wrd-monitor-tag ${tagClass}`}>{tagLabel}</span>
       </div>
-      <div className="wrd-monitor-empty">
-        <span>NO SAMPLE LOADED</span>
-      </div>
+      {state === "idle" && (
+        <div className="wrd-monitor-empty">
+          <span>NO SAMPLE LOADED</span>
+        </div>
+      )}
+      {state === "recording" && (
+        <div className="wrd-monitor-empty wrd-monitor-recording">
+          <div className="wrd-recording-bars">
+            {Array.from({ length: 24 }, (_, i) => (
+              <div key={i} className="wrd-recording-bar" style={{ animationDelay: `${i * 0.08}s` }} />
+            ))}
+          </div>
+          <span className="wrd-recording-text">CAPTURING AUDIO...</span>
+        </div>
+      )}
+      {state === "processing" && (
+        <div className="wrd-monitor-empty wrd-monitor-processing">
+          <span className="wrd-processing-text">PROCESSING SAMPLE...</span>
+        </div>
+      )}
+      {state === "done" && (
+        <canvas ref={canvasRef} className="wrd-monitor-canvas wrd-sample-canvas" />
+      )}
     </div>
   );
 }
@@ -471,6 +590,44 @@ export default function App() {
   const gainPct = (gainParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
+
+  // Capture state
+  const [captureState, setCaptureState] = useState<CaptureState>("idle");
+  const [sampleData, setSampleData] = useState<number[]>([]);
+  const captureTimerRef = useRef<number | null>(null);
+
+  const handleCapture = useCallback(() => {
+    if (captureState === "idle" || captureState === "done") {
+      // Start recording
+      setCaptureState("recording");
+      setSampleData([]);
+      captureParam.set(true);
+    } else if (captureState === "recording") {
+      // Stop recording
+      captureParam.set(false);
+      setCaptureState("processing");
+      // Simulate processing delay, then generate sample waveform
+      captureTimerRef.current = window.setTimeout(() => {
+        const fakeSample: number[] = [];
+        for (let i = 0; i < 256; i++) {
+          const t = i / 256;
+          fakeSample.push(
+            Math.sin(t * Math.PI * 12) * 0.6 * (1 - t * 0.3)
+            + noise2D(i * 0.04, 1.5) * 0.3
+            + noise2D(i * 0.12, 3.2) * 0.15
+          );
+        }
+        setSampleData(fakeSample);
+        setCaptureState("done");
+      }, 1200);
+    }
+  }, [captureState, captureParam]);
+
+  useEffect(() => {
+    return () => {
+      if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
+    };
+  }, []);
 
   // SCK source state
   const [sources, setSources] = useState<AudioSourceInfo[]>([]);
@@ -526,13 +683,14 @@ export default function App() {
             <div className="wrd-corner wrd-corner--bl" />
             <div className="wrd-corner wrd-corner--br" />
             <div className="wrd-vf-data">
-              <span className={captureParam.value ? "wrd-rec wrd-rec--active" : "wrd-rec"}>REC ●</span>
+              <span className={captureState === "recording" ? "wrd-rec wrd-rec--active" : "wrd-rec"}>REC ●</span>
               <span>SCStream</span>
               <span>{selectedSource ? sources.find(s => s.bundleId === selectedSource)?.displayName ?? "..." : "---"}</span>
             </div>
           </div>
           <LiveWaveform />
-          <SampleWaveform />
+          <CaptureButton state={captureState} onClick={handleCapture} />
+          <SampleWaveform state={captureState} sampleData={sampleData} />
         </div>
 
         {/* Source selector */}
@@ -574,7 +732,6 @@ export default function App() {
             </div>
 
             <div className="wrd-toggles">
-              <Toggle label="CAPTURE" on={captureParam.value} onClick={() => captureParam.set(!captureParam.value)} />
               <Toggle label="LOOP" on={false} />
               <Toggle label="REVERSE" on={false} />
               <Toggle label="MONITOR" on={false} />
