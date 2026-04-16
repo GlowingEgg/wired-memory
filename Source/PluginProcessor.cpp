@@ -93,7 +93,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         if (++blockCount % 100 == 1)
         {
             bool streamReady = capture_ && capture_->isStreamReady();
-            os_log (wmProcLog(), "processBlock: capture=%{public}d monitor=%{public}d streamReady=%{public}d",
+            os_log_error (wmProcLog(), "processBlock: capture=%{public}d monitor=%{public}d streamReady=%{public}d",
                     (int) captureOn, (int) monitorOn, (int) streamReady);
         }
     }
