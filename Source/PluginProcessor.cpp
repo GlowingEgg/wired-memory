@@ -1,6 +1,12 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "capture/SCKAudioCapture.h"
+#include <os/log.h>
+
+static os_log_t wmProcLog() {
+    static os_log_t log = os_log_create ("com.khan.wiredmemory", "processor");
+    return log;
+}
 
 WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
     : AudioProcessor (BusesProperties()
@@ -80,6 +86,17 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
     const bool monitorOn = apvts.getRawParameterValue ("monitor")->load() >= 0.5f;
+
+    // Rate-limited diagnostic: log processBlock state once per ~second
+    {
+        static int blockCount = 0;
+        if (++blockCount % 100 == 1)
+        {
+            bool streamReady = capture_ && capture_->isStreamReady();
+            os_log (wmProcLog(), "processBlock: capture=%{public}d monitor=%{public}d streamReady=%{public}d",
+                    (int) captureOn, (int) monitorOn, (int) streamReady);
+        }
+    }
 
     if (captureOn && capture_ && capture_->isStreamReady())
     {
