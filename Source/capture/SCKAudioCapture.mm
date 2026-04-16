@@ -269,10 +269,11 @@ void SCKAudioCapture::prepareForPlayback (double sampleRate, int maxBlockSize)
     impl_->processorSampleRate = sampleRate;
     impl_->maxBlockSize        = maxBlockSize;
 
-    // Size ring buffer for ~0.5s of audio to absorb bursty SCK callbacks
-    const int minCapacity = maxBlockSize * 4;
-    const int halfSecond  = static_cast<int> (sampleRate * 0.5);
-    const int capacity    = (halfSecond > minCapacity) ? halfSecond : minCapacity;
+    // Size ring buffer for ~100ms of audio — small enough to minimize capture
+    // latency while still absorbing bursty SCK callbacks
+    const int minCapacity  = maxBlockSize * 4;
+    const int hundredMs    = static_cast<int> (sampleRate * 0.1);
+    const int capacity     = (hundredMs > minCapacity) ? hundredMs : minCapacity;
     impl_->ringBuffer.allocate (2, capacity);  // stereo
 }
 

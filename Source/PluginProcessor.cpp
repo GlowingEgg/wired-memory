@@ -26,11 +26,6 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Capture",
         false));
 
-    layout.add (std::make_unique<juce::AudioParameterBool> (
-        juce::ParameterID { "monitor", 1 },
-        "Monitor",
-        true));
-
     return layout;
 }
 
@@ -79,53 +74,32 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numChannels = buffer.getNumChannels();
 
     const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
-    const bool monitorOn = apvts.getRawParameterValue ("monitor")->load() >= 0.5f;
+
+    // Plugin output is always silent during capture — Chrome's own audio output
+    // serves as the monitor, so we never double it through the DAW.
+    buffer.clear();
+
+    // Drain the ring buffer so it doesn't fill up, and grab samples for waveform vis
+    float captureL[2048], captureR[2048];
+    int samplesRead = 0;
 
     if (captureOn && capture_ && capture_->isStreamReady())
     {
-        // Read captured audio from the ring buffer
-        float* ptrs[2] = {
-            buffer.getWritePointer (0),
-            buffer.getWritePointer (numChannels > 1 ? 1 : 0)
-        };
-
-        const int samplesRead = capture_->readSamples (ptrs, juce::jmin (numChannels, 2), numSamples);
-
-        // Zero any samples we couldn't read (ring buffer underrun)
-        if (samplesRead < numSamples)
-        {
-            for (int ch = 0; ch < numChannels; ++ch)
-                juce::FloatVectorOperations::clear (
-                    buffer.getWritePointer (ch) + samplesRead,
-                    numSamples - samplesRead);
-        }
-    }
-    else
-    {
-        // No capture active — silence
-        buffer.clear();
+        float* capturePtrs[2] = { captureL, captureR };
+        samplesRead = capture_->readSamples (capturePtrs, 2,
+                                              juce::jmin (numSamples, 2048));
     }
 
-    // If monitor is off, zero the output (capture still buffers above)
-    if (! monitorOn)
+    // Write waveform snapshot for UI visualisation (from captured audio, not output)
     {
-        buffer.clear();
-    }
-    else
-    {
-        // Apply gain
-        const float gainValue = apvts.getRawParameterValue ("gain")->load();
-        buffer.applyGain (gainValue);
-    }
-
-    // Write waveform snapshot for UI visualisation
-    {
-        const float* readPtr = buffer.getReadPointer (0);
-        const int step = juce::jmax (1, numSamples / kWaveformSnapshotSize);
+        const float* waveformSrc = (samplesRead > 0) ? captureL
+                                                       : buffer.getReadPointer (0);
+        const int waveformLen = (samplesRead > 0) ? samplesRead : numSamples;
+        const int step = juce::jmax (1, waveformLen / kWaveformSnapshotSize);
 
         const juce::SpinLock::ScopedLockType lock (waveformLock_);
         for (int i = 0; i < kWaveformSnapshotSize; ++i)
-            waveformSnapshot_[i] = readPtr[juce::jmin (i * step, numSamples - 1)];
+            waveformSnapshot_[i] = waveformSrc[juce::jmin (i * step, waveformLen - 1)];
         waveformReady_ = true;
     }
 }

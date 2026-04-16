@@ -471,7 +471,6 @@ export default function App() {
   const gainPct = (gainParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
-  const monitorParam = useJuceToggle("monitor");
 
   // SCK source state
   const [sources, setSources] = useState<AudioSourceInfo[]>([]);
@@ -578,7 +577,7 @@ export default function App() {
               <Toggle label="CAPTURE" on={captureParam.value} onClick={() => captureParam.set(!captureParam.value)} />
               <Toggle label="LOOP" on={false} />
               <Toggle label="REVERSE" on={false} />
-              <Toggle label="MONITOR" on={monitorParam.value} onClick={() => monitorParam.set(!monitorParam.value)} />
+              <Toggle label="MONITOR" on={false} />
             </div>
           </div>
         </div>
