@@ -33,7 +33,7 @@ WiredMemoryAudioProcessor::~WiredMemoryAudioProcessor() {}
 
 const juce::String WiredMemoryAudioProcessor::getName() const { return JucePlugin_Name; }
 
-bool WiredMemoryAudioProcessor::acceptsMidi() const  { return false; }
+bool WiredMemoryAudioProcessor::acceptsMidi() const  { return true; }
 bool WiredMemoryAudioProcessor::producesMidi() const { return false; }
 bool WiredMemoryAudioProcessor::isMidiEffect() const { return false; }
 double WiredMemoryAudioProcessor::getTailLengthSeconds() const { return 0.0; }

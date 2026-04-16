@@ -46,12 +46,12 @@ juce_add_plugin(WiredMemory
     PLUGIN_MANUFACTURER_CODE "Tclb"
     PLUGIN_CODE         "Wm01"
     FORMATS             VST3 AU Standalone
-    IS_SYNTH            FALSE
-    NEEDS_MIDI_INPUT    FALSE
+    IS_SYNTH            TRUE
+    NEEDS_MIDI_INPUT    TRUE
     NEEDS_MIDI_OUTPUT   FALSE
     IS_MIDI_EFFECT      FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE
-    VST3_CATEGORIES     "Fx"
+    VST3_CATEGORIES     "Instrument"
 )
 
 # ── Generate JuceHeader.h ─────────────────────────────────────────────────────
