@@ -6,6 +6,7 @@ import {
   addSourcesListener,
   addStatusListener,
   addWaveformListener,
+  addSampleListener,
   setSource,
   refreshSources,
   type AudioSourceInfo,
@@ -603,25 +604,37 @@ export default function App() {
       setSampleData([]);
       captureParam.set(true);
     } else if (captureState === "recording") {
-      // Stop recording
+      // Stop recording — sample data arrives via sck:sample event
       captureParam.set(false);
       setCaptureState("processing");
-      // Simulate processing delay, then generate sample waveform
-      captureTimerRef.current = window.setTimeout(() => {
-        const fakeSample: number[] = [];
-        for (let i = 0; i < 256; i++) {
-          const t = i / 256;
-          fakeSample.push(
-            Math.sin(t * Math.PI * 12) * 0.6 * (1 - t * 0.3)
-            + noise2D(i * 0.04, 1.5) * 0.3
-            + noise2D(i * 0.12, 3.2) * 0.15
-          );
-        }
-        setSampleData(fakeSample);
-        setCaptureState("done");
-      }, 1200);
+
+      if (!isInsidePlugin()) {
+        // Dev mode: generate fake sample data after a short delay
+        captureTimerRef.current = window.setTimeout(() => {
+          const fakeSample: number[] = [];
+          for (let i = 0; i < 512; i++) {
+            const t = i / 512;
+            fakeSample.push(
+              Math.sin(t * Math.PI * 12) * 0.6 * (1 - t * 0.3)
+              + noise2D(i * 0.04, 1.5) * 0.3
+              + noise2D(i * 0.12, 3.2) * 0.15
+            );
+          }
+          setSampleData(fakeSample);
+          setCaptureState("done");
+        }, 800);
+      }
     }
   }, [captureState, captureParam]);
+
+  // Listen for real sample data from the C++ backend
+  useEffect(() => {
+    const unsub = addSampleListener((samples) => {
+      setSampleData(samples);
+      setCaptureState("done");
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     return () => {

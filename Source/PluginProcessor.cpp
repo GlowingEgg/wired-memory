@@ -26,6 +26,11 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Capture",
         false));
 
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "monitor", 1 },
+        "Monitor",
+        false));
+
     return layout;
 }
 
@@ -50,6 +55,12 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
         capture_ = std::make_unique<SCKAudioCapture>();
 
     capture_->prepareForPlayback (sampleRate, samplesPerBlock);
+
+    // Pre-allocate record buffer (mono, up to kMaxRecordSeconds)
+    recordBufferCapacity_ = static_cast<int> (sampleRate * kMaxRecordSeconds);
+    recordBuffer_ = std::make_unique<float[]> (static_cast<size_t> (recordBufferCapacity_));
+    recordBufferPos_ = 0;
+    wasCapturing_ = false;
 }
 void WiredMemoryAudioProcessor::releaseResources() {}
 
@@ -71,13 +82,16 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     juce::ScopedNoDenormals noDenormals;
 
     const int numSamples  = buffer.getNumSamples();
-    const int numChannels = buffer.getNumChannels();
 
     const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
 
     // Plugin output is always silent during capture — Chrome's own audio output
     // serves as the monitor, so we never double it through the DAW.
     buffer.clear();
+
+    // Reset accumulation buffer when recording starts
+    if (captureOn && ! wasCapturing_)
+        recordBufferPos_ = 0;
 
     // Drain the ring buffer so it doesn't fill up, and grab samples for waveform vis
     float captureL[2048], captureR[2048];
@@ -88,7 +102,45 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         float* capturePtrs[2] = { captureL, captureR };
         samplesRead = capture_->readSamples (capturePtrs, 2,
                                               juce::jmin (numSamples, 2048));
+
+        // Accumulate into the record buffer (mono — left channel)
+        if (samplesRead > 0 && recordBuffer_)
+        {
+            const int space = recordBufferCapacity_ - recordBufferPos_;
+            const int toWrite = juce::jmin (samplesRead, space);
+            if (toWrite > 0)
+            {
+                std::memcpy (recordBuffer_.get() + recordBufferPos_,
+                             captureL,
+                             sizeof (float) * static_cast<size_t> (toWrite));
+                recordBufferPos_ += toWrite;
+            }
+        }
     }
+
+    // When capture stops, downsample the recorded buffer into a peak-envelope snapshot
+    if (wasCapturing_ && ! captureOn && recordBufferPos_ > 0)
+    {
+        const juce::SpinLock::ScopedLockType lock (sampleLock_);
+        const float* src = recordBuffer_.get();
+        const int srcLen = recordBufferPos_;
+
+        for (int i = 0; i < kSampleSnapshotSize; ++i)
+        {
+            const int start = i * srcLen / kSampleSnapshotSize;
+            const int end   = juce::jmin ((i + 1) * srcLen / kSampleSnapshotSize, srcLen);
+            float peak = 0.0f;
+            for (int j = start; j < end; ++j)
+            {
+                if (std::abs (src[j]) > std::abs (peak))
+                    peak = src[j];
+            }
+            sampleSnapshot_[i] = peak;
+        }
+        sampleReady_ = true;
+    }
+
+    wasCapturing_ = captureOn;
 
     // Write waveform snapshot for UI visualisation (from captured audio, not output)
     {
@@ -111,6 +163,16 @@ bool WiredMemoryAudioProcessor::readWaveformSnapshot (float* dest)
         return false;
     std::memcpy (dest, waveformSnapshot_.data(), sizeof (float) * kWaveformSnapshotSize);
     waveformReady_ = false;
+    return true;
+}
+
+bool WiredMemoryAudioProcessor::readSampleSnapshot (float* dest)
+{
+    const juce::SpinLock::ScopedLockType lock (sampleLock_);
+    if (! sampleReady_)
+        return false;
+    std::memcpy (dest, sampleSnapshot_.data(), sizeof (float) * kSampleSnapshotSize);
+    sampleReady_ = false;
     return true;
 }
 

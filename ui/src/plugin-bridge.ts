@@ -253,6 +253,24 @@ export function addWaveformListener(
 }
 
 /**
+ * Listen for the captured sample snapshot pushed from C++ when recording stops.
+ * The snapshot is a 512-point peak-envelope array.
+ * Returns an unsubscribe function.
+ */
+export function addSampleListener(
+  cb: (samples: number[]) => void
+): () => void {
+  return addBackendListener("sck:sample", (data) => {
+    try {
+      const samples = typeof data === "string" ? JSON.parse(data) : data;
+      cb(samples as number[]);
+    } catch {
+      // ignore malformed data
+    }
+  });
+}
+
+/**
  * Ask the C++ backend to refresh the available sources list.
  */
 export function refreshSources(): void {

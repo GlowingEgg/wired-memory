@@ -49,14 +49,32 @@ public:
     static constexpr int kWaveformSnapshotSize = 128;
     bool readWaveformSnapshot (float* dest);
 
+    /** Captured sample snapshot — peak-envelope downsampled for UI display.
+        Written by the audio thread when capture stops, read by editor timer. */
+    static constexpr int kSampleSnapshotSize = 512;
+    bool readSampleSnapshot (float* dest);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
     std::unique_ptr<SCKAudioCapture> capture_;
 
+    // -- Live waveform snapshot (128 samples, ~30fps) --
     juce::SpinLock waveformLock_;
     std::array<float, kWaveformSnapshotSize> waveformSnapshot_ {};
     bool waveformReady_ = false;
+
+    // -- Sample accumulation (audio thread only during recording) --
+    static constexpr int kMaxRecordSeconds = 30;
+    std::unique_ptr<float[]> recordBuffer_;   // mono, pre-allocated
+    int recordBufferCapacity_ = 0;
+    int recordBufferPos_      = 0;
+    bool wasCapturing_        = false;
+
+    // -- Captured sample snapshot (read by editor timer) --
+    juce::SpinLock sampleLock_;
+    std::array<float, kSampleSnapshotSize> sampleSnapshot_ {};
+    bool sampleReady_ = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WiredMemoryAudioProcessor)
 };

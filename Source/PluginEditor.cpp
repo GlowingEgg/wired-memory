@@ -103,6 +103,20 @@ void WiredMemoryAudioProcessorEditor::timerCallback()
         json += "]";
         webBrowser->emitEventIfBrowserIsVisible ("sck:waveform", json);
     }
+
+    // Check for a completed sample snapshot and send it to the UI
+    float sampleBuf[WiredMemoryAudioProcessor::kSampleSnapshotSize];
+    if (audioProcessor.readSampleSnapshot (sampleBuf))
+    {
+        juce::String sampleJson = "[";
+        for (int i = 0; i < WiredMemoryAudioProcessor::kSampleSnapshotSize; ++i)
+        {
+            if (i > 0) sampleJson += ",";
+            sampleJson += juce::String (sampleBuf[i], 4);
+        }
+        sampleJson += "]";
+        webBrowser->emitEventIfBrowserIsVisible ("sck:sample", sampleJson);
+    }
 #endif
 }
 
