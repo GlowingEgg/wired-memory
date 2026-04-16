@@ -189,6 +189,8 @@ SCKAudioCapture::~SCKAudioCapture() = default;
 
 void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
 {
+    os_log (wmLog(), "getAvailableSources called");
+
     auto* impl = impl_.get();
 
     [SCShareableContent getShareableContentExcludingDesktopWindows:NO
@@ -237,6 +239,8 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
 
 void SCKAudioCapture::setSource (const std::string& bundleId)
 {
+    os_log (wmLog(), "setSource called with bundleId: %{public}s", bundleId.c_str());
+
     auto* impl = impl_.get();
 
     // Tear down existing stream first
@@ -302,6 +306,8 @@ std::string SCKAudioCapture::getSelectedBundleId() const
 
 void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
 {
+    os_log (wmLog(), "startStreamForBundleId: %{public}s", bundleId.c_str());
+
     auto* impl = impl_.get();
 
     @try
@@ -320,10 +326,16 @@ void SCKAudioCapture::startStreamForBundleId (const std::string& bundleId)
         }
 
         if (targetApp == nil)
+        {
+            os_log_error (wmLog(), "startStream: target app not found for %{public}s", bundleId.c_str());
             return;
+        }
 
         if (impl->cachedContent.displays.count == 0)
+        {
+            os_log_error (wmLog(), "startStream: no displays found");
             return;
+        }
 
         SCDisplay* display = impl->cachedContent.displays.firstObject;
 
