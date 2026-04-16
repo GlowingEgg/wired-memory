@@ -85,16 +85,19 @@ struct SCKAudioCapture::Impl
     if (type != SCStreamOutputTypeAudio || !_impl)
         return;
 
-    // Get the audio buffer list from the sample buffer
+    // Get the audio buffer list from the sample buffer.
+    // AudioBufferList has a variable-length mBuffers[1] array — allocate enough
+    // space for stereo (2 AudioBuffer entries).
     CMBlockBufferRef blockBuffer = nil;
-    AudioBufferList audioBufferList;
-    memset (&audioBufferList, 0, sizeof (audioBufferList));
+    struct { AudioBufferList abl; AudioBuffer extra; } ablStorage;
+    memset (&ablStorage, 0, sizeof (ablStorage));
+    AudioBufferList& audioBufferList = ablStorage.abl;
 
     OSStatus status = CMSampleBufferGetAudioBufferListWithRetainedBlockBuffer (
         sampleBuffer,
         nullptr,                    // buffer list size out
         &audioBufferList,
-        sizeof (audioBufferList),
+        sizeof (ablStorage),
         nullptr,                    // allocator
         nullptr,                    // block allocator
         kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
