@@ -94,7 +94,7 @@ if(USE_WEB_UI)
     )
     add_custom_command(
         OUTPUT  "${UI_STAMP}"
-        COMMAND "${NPM_EXECUTABLE}" install --prefix "${UI_DIR}"
+        COMMAND ${CMAKE_COMMAND} -E env NODE_ENV=development "${NPM_EXECUTABLE}" install --prefix "${UI_DIR}"
         COMMAND "${NPM_EXECUTABLE}" run build --prefix "${UI_DIR}"
         COMMAND "${CMAKE_COMMAND}" -E touch "${UI_STAMP}"
         DEPENDS ${UI_SOURCES}
