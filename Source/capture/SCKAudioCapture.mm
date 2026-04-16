@@ -194,12 +194,75 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
         impl->permissionDenied.store (false, std::memory_order_relaxed);
         impl->cachedContent = content;
 
+        // Bundle ID prefixes for apps likely to produce audio worth sampling:
+        // browsers, media players, communication apps, DAWs, creative tools
+        static NSArray<NSString*>* allowedPrefixes = @[
+            // Browsers
+            @"com.google.Chrome",
+            @"com.apple.Safari",
+            @"org.mozilla.firefox",
+            @"org.mozilla.nightly",
+            @"com.microsoft.edgemac",
+            @"com.brave.Browser",
+            @"com.operasoftware.Opera",
+            @"com.vivaldi.Vivaldi",
+            @"company.thebrowser.Browser",  // Arc
+            @"org.chromium.Chromium",
+            @"com.nickvision.nicegear.nicegear-browser",
+            @"com.nickvision.nicegear",
+            // Media players
+            @"com.spotify.client",
+            @"com.apple.Music",
+            @"com.apple.TV",
+            @"com.tidal.desktop",
+            @"com.amazon.music",
+            @"tv.plex",
+            @"io.mpv",
+            @"org.videolan.vlc",
+            @"com.colliderli.iina",
+            @"com.apple.QuickTimePlayerX",
+            // Communication / streaming
+            @"com.hnc.Discord",
+            @"us.zoom.xos",
+            @"com.microsoft.teams",
+            @"com.skype.skype",
+            @"com.tinyspeck.slackmacgap",
+            @"com.google.meet",
+            @"tv.twitch",
+            @"com.obsproject.obs-studio",
+            @"com.elgato.StreamDeck",
+            // DAWs and audio tools
+            @"com.ableton.",
+            @"com.native-instruments.",
+            @"com.apple.logic",
+            @"com.apple.garageband",
+            @"com.avid.ProTools",
+            @"com.image-line.flstudio",
+            @"com.bitwig.",
+            @"com.cockos.reaper",
+            @"com.steinberg.",
+            @"com.presonus.",
+            @"com.rogueamoeba.",
+        ];
+
         std::vector<AudioSourceInfo> sources;
         for (SCRunningApplication* app in content.applications)
         {
-            // Filter to apps that likely produce audio (browsers, media players, etc.)
-            // For now, include all apps — let the UI filter
-            if (app.bundleIdentifier != nil && app.applicationName != nil)
+            if (app.bundleIdentifier == nil || app.applicationName == nil)
+                continue;
+
+            // Check if the bundle ID starts with any allowed prefix
+            BOOL allowed = NO;
+            for (NSString* prefix in allowedPrefixes)
+            {
+                if ([app.bundleIdentifier hasPrefix:prefix])
+                {
+                    allowed = YES;
+                    break;
+                }
+            }
+
+            if (allowed)
             {
                 sources.push_back ({
                     std::string ([app.bundleIdentifier UTF8String]),
