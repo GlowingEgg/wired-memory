@@ -113,8 +113,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         {
             static int readLogCount = 0;
             if (++readLogCount % 100 == 1)
-                os_log_error (wmProcLog(), "ringbuf: avail=%{public}d read=%{public}d requested=%{public}d",
-                              avail, samplesRead, numSamples);
+                os_log_error (wmProcLog(), "ringbuf: avail=%{public}d read=%{public}d requested=%{public}d cap=%{public}p",
+                              avail, samplesRead, numSamples, (void*) capture_.get());
         }
 
         // Zero any samples we couldn't read (ring buffer underrun)

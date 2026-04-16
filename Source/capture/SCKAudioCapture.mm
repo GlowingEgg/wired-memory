@@ -151,7 +151,10 @@ struct SCKAudioCapture::Impl
         }
 
         const float* ptrs[2] = { left, right };
-        _impl->ringBuffer.write (ptrs, 2, frames);
+        int wrote = _impl->ringBuffer.write (ptrs, 2, frames);
+        if (_callbackCount <= 5)
+            os_log_error (wmLog(), "callback write (interleaved): wrote=%{public}d of %{public}d, capacity=%{public}d impl=%{public}p",
+                          wrote, frames, _impl->ringBuffer.getCapacity(), (void*) _impl);
     }
     else
     {
@@ -162,7 +165,10 @@ struct SCKAudioCapture::Impl
         for (int ch = 0; ch < channels; ++ch)
             ptrs[ch] = (const float*) audioBufferList.mBuffers[ch].mData;
 
-        _impl->ringBuffer.write (ptrs, channels, (int) numFrames);
+        int wrote = _impl->ringBuffer.write (ptrs, channels, (int) numFrames);
+        if (_callbackCount <= 5)
+            os_log_error (wmLog(), "callback write (non-interleaved): wrote=%{public}d of %{public}ld, capacity=%{public}d impl=%{public}p",
+                          wrote, (long) numFrames, _impl->ringBuffer.getCapacity(), (void*) _impl);
     }
 
     if (blockBuffer)
@@ -292,6 +298,9 @@ int SCKAudioCapture::getRingBufferAvailable() const noexcept
 
 void SCKAudioCapture::prepareForPlayback (double sampleRate, int maxBlockSize)
 {
+    os_log (wmLog(), "prepareForPlayback: rate=%{public}.0f block=%{public}d impl=%{public}p",
+            sampleRate, maxBlockSize, (void*) impl_.get());
+
     impl_->processorSampleRate = sampleRate;
     impl_->maxBlockSize        = maxBlockSize;
 
