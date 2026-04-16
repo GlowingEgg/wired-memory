@@ -85,14 +85,6 @@ struct SCKAudioCapture::Impl
     if (type != SCStreamOutputTypeAudio || !_impl)
         return;
 
-    // Log first few callbacks for diagnostics
-    if (_callbackCount < 5)
-    {
-        CMItemCount n = CMSampleBufferGetNumSamples (sampleBuffer);
-        os_log (wmLog(), "SCStream audio callback #%{public}d: %{public}ld frames", _callbackCount, (long) n);
-        ++_callbackCount;
-    }
-
     // Get the audio buffer list from the sample buffer
     CMBlockBufferRef blockBuffer = nil;
     AudioBufferList audioBufferList;
@@ -108,8 +100,21 @@ struct SCKAudioCapture::Impl
         kCMSampleBufferFlag_AudioBufferList_Assure16ByteAlignment,
         &blockBuffer);
 
+    // Log first few callbacks for diagnostics (after we have buffer list info)
+    if (_callbackCount < 5)
+    {
+        CMItemCount n = CMSampleBufferGetNumSamples (sampleBuffer);
+        os_log_error (wmLog(), "callback #%{public}d: %{public}ld frames, status=%{public}d, numBuffers=%{public}u, capacity=%{public}d, impl=%{public}p",
+                      _callbackCount, (long) n, (int) status, (unsigned) audioBufferList.mNumberBuffers,
+                      _impl->ringBuffer.getCapacity(), (void*) _impl);
+        ++_callbackCount;
+    }
+
     if (status != noErr || audioBufferList.mNumberBuffers == 0)
     {
+        if (_callbackCount <= 10)
+            os_log_error (wmLog(), "callback: GetAudioBufferList failed status=%{public}d numBuffers=%{public}u",
+                          (int) status, (unsigned) audioBufferList.mNumberBuffers);
         if (blockBuffer) CFRelease (blockBuffer);
         return;
     }
@@ -298,7 +303,7 @@ int SCKAudioCapture::getRingBufferAvailable() const noexcept
 
 void SCKAudioCapture::prepareForPlayback (double sampleRate, int maxBlockSize)
 {
-    os_log (wmLog(), "prepareForPlayback: rate=%{public}.0f block=%{public}d impl=%{public}p",
+    os_log_error (wmLog(), "prepareForPlayback: rate=%{public}.0f block=%{public}d impl=%{public}p",
             sampleRate, maxBlockSize, (void*) impl_.get());
 
     impl_->processorSampleRate = sampleRate;
