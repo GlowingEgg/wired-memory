@@ -84,10 +84,39 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int numSamples  = buffer.getNumSamples();
 
     const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
+    const float gain     = apvts.getRawParameterValue ("gain")->load();
 
-    // Plugin output is always silent during capture — Chrome's own audio output
-    // serves as the monitor, so we never double it through the DAW.
+    // Start with silence — playback will write into the buffer below
     buffer.clear();
+
+    // ── Sample playback ─────────────────────────────────────────────────
+    if (playbackActive_.load() && recordBuffer_ && ! captureOn)
+    {
+        int pos    = playbackPos_.load();
+        int length = sampleLength_.load();
+
+        if (pos < length)
+        {
+            const int framesToPlay = juce::jmin (numSamples, length - pos);
+            const float* src = recordBuffer_.get() + pos;
+
+            // Write mono sample to all output channels, apply gain
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            {
+                float* dest = buffer.getWritePointer (ch);
+                for (int i = 0; i < framesToPlay; ++i)
+                    dest[i] = src[i] * gain;
+            }
+
+            playbackPos_.store (pos + framesToPlay);
+        }
+        else
+        {
+            // Reached end of sample
+            playbackActive_.store (false);
+            playbackPos_.store (0);
+        }
+    }
 
     // Reset accumulation buffer when recording starts
     if (captureOn && ! wasCapturing_)
@@ -118,9 +147,11 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // When capture stops, downsample the recorded buffer into a peak-envelope snapshot
+    // When capture stops, store the sample length and downsample into a peak-envelope snapshot
     if (wasCapturing_ && ! captureOn && recordBufferPos_ > 0)
     {
+        sampleLength_.store (recordBufferPos_);
+
         const juce::SpinLock::ScopedLockType lock (sampleLock_);
         const float* src = recordBuffer_.get();
         const int srcLen = recordBufferPos_;
@@ -174,6 +205,29 @@ bool WiredMemoryAudioProcessor::readSampleSnapshot (float* dest)
     std::memcpy (dest, sampleSnapshot_.data(), sizeof (float) * kSampleSnapshotSize);
     sampleReady_ = false;
     return true;
+}
+
+void WiredMemoryAudioProcessor::startPlayback()
+{
+    if (sampleLength_.load() > 0)
+    {
+        playbackPos_.store (0);
+        playbackActive_.store (true);
+    }
+}
+
+void WiredMemoryAudioProcessor::stopPlayback()
+{
+    playbackActive_.store (false);
+    playbackPos_.store (0);
+}
+
+float WiredMemoryAudioProcessor::getPlaybackProgress() const
+{
+    const int length = sampleLength_.load();
+    if (length <= 0 || ! playbackActive_.load())
+        return 0.0f;
+    return static_cast<float> (playbackPos_.load()) / static_cast<float> (length);
 }
 
 bool WiredMemoryAudioProcessor::hasEditor() const { return true; }

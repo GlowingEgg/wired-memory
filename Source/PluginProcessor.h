@@ -54,6 +54,13 @@ public:
     static constexpr int kSampleSnapshotSize = 512;
     bool readSampleSnapshot (float* dest);
 
+    /** Start/stop sample playback from the recorded buffer. */
+    void startPlayback();
+    void stopPlayback();
+
+    /** Returns normalised playback progress [0, 1], or 0 if not playing. */
+    float getPlaybackProgress() const;
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -70,6 +77,11 @@ private:
     int recordBufferCapacity_ = 0;
     int recordBufferPos_      = 0;
     bool wasCapturing_        = false;
+
+    // -- Sample playback --
+    std::atomic<bool>  playbackActive_ { false };
+    std::atomic<int>   playbackPos_    { 0 };
+    std::atomic<int>   sampleLength_   { 0 };   // length of recorded sample in frames
 
     // -- Captured sample snapshot (read by editor timer) --
     juce::SpinLock sampleLock_;

@@ -7,6 +7,9 @@ import {
   addStatusListener,
   addWaveformListener,
   addSampleListener,
+  addPlaybackListener,
+  startPlayback,
+  stopPlayback as bridgeStopPlayback,
   setSource,
   refreshSources,
   type AudioSourceInfo,
@@ -584,7 +587,7 @@ export default function App() {
   const [sampleData, setSampleData] = useState<number[]>([]);
   const captureTimerRef = useRef<number | null>(null);
 
-  // Playback state
+  // Playback state — driven by C++ backend in plugin, local animation in dev
   const [playing, setPlaying] = useState(false);
   const [playProgress, setPlayProgress] = useState(0);
   const playRafRef = useRef<number | null>(null);
@@ -592,11 +595,15 @@ export default function App() {
   const playDurationMs = 2000; // sample duration in dev mode
 
   const stopPlayback = useCallback(() => {
-    setPlaying(false);
-    setPlayProgress(0);
-    if (playRafRef.current) {
-      cancelAnimationFrame(playRafRef.current);
-      playRafRef.current = null;
+    if (isInsidePlugin()) {
+      bridgeStopPlayback();
+    } else {
+      setPlaying(false);
+      setPlayProgress(0);
+      if (playRafRef.current) {
+        cancelAnimationFrame(playRafRef.current);
+        playRafRef.current = null;
+      }
     }
   }, []);
 
@@ -604,25 +611,39 @@ export default function App() {
     if (playing) {
       stopPlayback();
     } else if (captureState === "done" && sampleData.length > 0) {
-      setPlaying(true);
-      playStartRef.current = performance.now();
-      const tick = () => {
-        const elapsed = performance.now() - playStartRef.current;
-        const progress = elapsed / playDurationMs;
-        if (progress >= 1) {
-          setPlaying(false);
-          setPlayProgress(0);
-          playRafRef.current = null;
-          return;
-        }
-        setPlayProgress(progress);
+      if (isInsidePlugin()) {
+        startPlayback();
+      } else {
+        // Dev mode: animate locally
+        setPlaying(true);
+        playStartRef.current = performance.now();
+        const tick = () => {
+          const elapsed = performance.now() - playStartRef.current;
+          const progress = elapsed / playDurationMs;
+          if (progress >= 1) {
+            setPlaying(false);
+            setPlayProgress(0);
+            playRafRef.current = null;
+            return;
+          }
+          setPlayProgress(progress);
+          playRafRef.current = requestAnimationFrame(tick);
+        };
         playRafRef.current = requestAnimationFrame(tick);
-      };
-      playRafRef.current = requestAnimationFrame(tick);
+      }
     }
   }, [playing, captureState, sampleData, stopPlayback]);
 
-  // Stop playback when a new recording starts
+  // Listen for playback state from C++ backend
+  useEffect(() => {
+    const unsub = addPlaybackListener((state) => {
+      setPlaying(state.playing);
+      setPlayProgress(state.progress);
+    });
+    return unsub;
+  }, []);
+
+  // Stop any active playback when a new recording starts
   const handleCapture = useCallback(() => {
     if (captureState === "idle" || captureState === "done") {
       stopPlayback();

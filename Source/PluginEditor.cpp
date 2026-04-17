@@ -117,6 +117,15 @@ void WiredMemoryAudioProcessorEditor::timerCallback()
         sampleJson += "]";
         webBrowser->emitEventIfBrowserIsVisible ("sck:sample", sampleJson);
     }
+
+    // Push playback progress to the UI
+    {
+        float progress = audioProcessor.getPlaybackProgress();
+        bool playing = progress > 0.0f;
+        juce::String json = "{\"playing\":" + juce::String (playing ? "true" : "false")
+                          + ",\"progress\":" + juce::String (progress, 4) + "}";
+        webBrowser->emitEventIfBrowserIsVisible ("sck:playback", json);
+    }
 #endif
 }
 
@@ -154,6 +163,16 @@ void WiredMemoryAudioProcessorEditor::resized()
             // JS → C++: request source list refresh
             .withNativeFunction ("sck_refreshSources", [this] (auto&, auto complete) {
                 refreshAndEmitSources();
+                complete ({});
+            })
+            // JS → C++: start sample playback
+            .withNativeFunction ("sck_play", [this] (auto&, auto complete) {
+                audioProcessor.startPlayback();
+                complete ({});
+            })
+            // JS → C++: stop sample playback
+            .withNativeFunction ("sck_stop", [this] (auto&, auto complete) {
+                audioProcessor.stopPlayback();
                 complete ({});
             })
       #if PLUGIN_USE_WEB_UI

@@ -271,6 +271,50 @@ export function addSampleListener(
 }
 
 /**
+ * Start playing the captured sample.
+ */
+export function startPlayback(): void {
+  if (Juce) {
+    Juce.getNativeFunction("sck_play")();
+  } else {
+    console.log("[mock] startPlayback");
+  }
+}
+
+/**
+ * Stop playing the captured sample.
+ */
+export function stopPlayback(): void {
+  if (Juce) {
+    Juce.getNativeFunction("sck_stop")();
+  } else {
+    console.log("[mock] stopPlayback");
+  }
+}
+
+export interface PlaybackState {
+  playing: boolean;
+  progress: number;
+}
+
+/**
+ * Listen for playback state updates pushed from C++ (~30fps).
+ * Returns an unsubscribe function.
+ */
+export function addPlaybackListener(
+  cb: (state: PlaybackState) => void
+): () => void {
+  return addBackendListener("sck:playback", (data) => {
+    try {
+      const state = typeof data === "string" ? JSON.parse(data) : data;
+      cb(state as PlaybackState);
+    } catch {
+      // ignore malformed data
+    }
+  });
+}
+
+/**
  * Ask the C++ backend to refresh the available sources list.
  */
 export function refreshSources(): void {
