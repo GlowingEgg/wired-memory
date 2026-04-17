@@ -771,7 +771,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(220, 200, 40, 0.12);
+  background: rgba(220, 200, 40, 0.22);
   pointer-events: none;
   display: flex;
 }
@@ -780,15 +780,16 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 1px;
-  background: rgba(220, 200, 40, 0.6);
+  width: 2px;
+  background: rgba(240, 220, 60, 0.9);
+  box-shadow: 0 0 6px rgba(240, 220, 60, 0.6), 0 0 12px rgba(240, 220, 60, 0.3);
 }
 
 .wrd-region-line--left  { left: 0; }
 .wrd-region-line--right { right: 0; }
 
 .wrd-region-handle {
-  width: 7px;
+  width: 9px;
   cursor: ew-resize;
   pointer-events: auto;
   background: transparent;
@@ -796,11 +797,11 @@
 }
 
 .wrd-region-handle.wrd-region-line--left {
-  left: -3px;
+  left: -4px;
 }
 
 .wrd-region-handle.wrd-region-line--right {
-  right: -3px;
+  right: -4px;
 }
 
 .wrd-region-body {
@@ -821,20 +822,20 @@
 .wrd-sample-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
+  gap: 12px;
+  padding: 10px 12px;
   border-top: 1px solid rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
 }
 
 .wrd-play-btn {
-  width: 36px;
-  height: 36px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
-  border: 1.5px solid rgba(60, 100, 160, 0.3);
+  border: 2px solid rgba(60, 100, 160, 0.3);
   background: rgba(60, 100, 160, 0.08);
   color: rgba(60, 100, 160, 0.85);
-  font-size: 16px;
+  font-size: 24px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -872,15 +873,58 @@
 
 .wrd-sample-knobs {
   display: flex;
-  gap: 4px;
-  margin-left: 4px;
+  gap: 6px;
+  margin-left: 6px;
+}
+
+.wrd-sample-knobs .wrd-knob {
+  width: 72px;
+}
+
+.wrd-sample-knobs .wrd-knob-svg {
+  width: 54px;
+  height: 54px;
+}
+
+.wrd-sample-knobs .wrd-val--light,
+.wrd-sample-knobs .wrd-val--amber,
+.wrd-sample-knobs .wrd-val--cyan {
+  font-size: 20px;
+}
+
+.wrd-sample-knobs .wrd-unit {
+  font-size: 9px;
+}
+
+.wrd-sample-knobs .wrd-knob-label {
+  font-size: 9px;
 }
 
 .wrd-sample-toggles {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
   margin-left: auto;
+}
+
+.wrd-sample-toggles .wrd-toggle-track {
+  width: 33px;
+  height: 14px;
+}
+
+.wrd-sample-toggles .wrd-toggle-thumb {
+  width: 8px;
+  height: 8px;
+  top: 2px;
+  left: 2px;
+}
+
+.wrd-sample-toggles .wrd-toggle--on .wrd-toggle-thumb {
+  left: 21px;
+}
+
+.wrd-sample-toggles .wrd-toggle-label {
+  font-size: 9px;
 }
 
 /* ── Source selector inside live monitor header ─────────────────────── */

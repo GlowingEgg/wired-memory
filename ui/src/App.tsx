@@ -701,6 +701,9 @@ export default function App() {
   // We map a "curved" 0-1 knob position through a power curve so that
   // movement near 12 o'clock (center) produces smaller parameter changes.
   const speedCurveExp = 2.5;
+  // Normalised parameter value that corresponds to 1.0x speed
+  // JUCE: norm = pow((1.0 - 0.1) / (4.0 - 0.1), skew) where skew=0.5
+  const speedDefaultNorm = Math.sqrt(0.9 / 3.9); // ≈ 0.4804
   // Parameter → knob position (expand center)
   const speedToKnob = (paramNorm: number): number => {
     const centered = (paramNorm - 0.5) * 2; // -1 to 1
@@ -713,6 +716,7 @@ export default function App() {
   };
 
   const speedKnobPos = speedToKnob(speedParam.value);
+  const speedDefaultKnob = speedToKnob(speedDefaultNorm);
   const handleSpeedChange = useCallback((knobNorm: number) => {
     speedParam.set(knobToSpeed(knobNorm));
   }, [speedParam]);
@@ -758,25 +762,34 @@ export default function App() {
       if (isInsidePlugin()) {
         startPlayback();
       } else {
-        // Dev mode: animate locally
+        // Dev mode: animate locally with loop/reverse support
         setPlaying(true);
         playStartRef.current = performance.now();
         const tick = () => {
           const elapsed = performance.now() - playStartRef.current;
-          const progress = elapsed / playDurationMs;
-          if (progress >= 1) {
-            setPlaying(false);
-            setPlayProgress(0);
-            playRafRef.current = null;
-            return;
+          let progress = elapsed / playDurationMs;
+          if (reverseParam.value) {
+            progress = 1 - progress;
           }
-          setPlayProgress(progress);
+          if (progress >= 1 || progress <= 0) {
+            if (loopParam.value) {
+              playStartRef.current = performance.now();
+              setPlayProgress(reverseParam.value ? 1 : 0);
+            } else {
+              setPlaying(false);
+              setPlayProgress(0);
+              playRafRef.current = null;
+              return;
+            }
+          } else {
+            setPlayProgress(Math.max(0, Math.min(1, progress)));
+          }
           playRafRef.current = requestAnimationFrame(tick);
         };
         playRafRef.current = requestAnimationFrame(tick);
       }
     }
-  }, [playing, captureState, sampleData, stopPlayback]);
+  }, [playing, captureState, sampleData, stopPlayback, loopParam.value, reverseParam.value]);
 
   // Listen for playback state from C++ backend
   useEffect(() => {
@@ -787,10 +800,15 @@ export default function App() {
     return unsub;
   }, []);
 
-  // Stop any active playback when a new recording starts
+  // Stop any active playback when a new recording starts, reset controls to neutral
   const handleCapture = useCallback(() => {
     if (captureState === "idle" || captureState === "done") {
       stopPlayback();
+      speedParam.set(speedDefaultNorm);
+      startParam.set(0);
+      lengthParam.set(1);
+      loopParam.set(false);
+      reverseParam.set(false);
       setCaptureState("recording");
       setSampleData([]);
       captureParam.set(true);
@@ -814,7 +832,7 @@ export default function App() {
         }, 800);
       }
     }
-  }, [captureState, captureParam, stopPlayback]);
+  }, [captureState, captureParam, stopPlayback, speedParam, startParam, lengthParam, loopParam, reverseParam, speedDefaultNorm]);
 
   // Listen for real sample data from the C++ backend
   useEffect(() => {
@@ -905,7 +923,7 @@ export default function App() {
                   {playing ? "⏹" : "▶"}
                 </button>
                 <div className="wrd-sample-knobs">
-                  <Knob label="SPEED" normalizedValue={speedKnobPos} displayValue={speedDisplay} unit="%" color="amber" onChange={handleSpeedChange} defaultValue={0.5} />
+                  <Knob label="SPEED" normalizedValue={speedKnobPos} displayValue={speedDisplay} unit="%" color="amber" onChange={handleSpeedChange} defaultValue={speedDefaultKnob} />
                   <Knob label="START" normalizedValue={startParam.value} displayValue={startDisplay} unit="%" color="cyan" onChange={startParam.set} defaultValue={0} />
                   <Knob label="LENGTH" normalizedValue={lengthParam.value} displayValue={lengthDisplay} unit="%" color="light" onChange={lengthParam.set} defaultValue={1} />
                 </div>

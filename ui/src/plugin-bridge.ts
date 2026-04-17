@@ -35,7 +35,7 @@ export interface ToggleState {
 const mockSliders = new Map<string, { normValue: number; listeners: Set<SliderListener> }>();
 
 const mockSliderDefaults: Record<string, number> = {
-  speed: 0.5,   // ~1x
+  speed: Math.sqrt(0.9 / 3.9),   // 1.0x — matches JUCE skew=0.5, range 0.1–4.0
   start: 0.0,
   length: 1.0,
 };
