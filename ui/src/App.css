@@ -155,7 +155,12 @@
 }
 
 .wrd-monitor-live {
-  height: 96px;
+  backdrop-filter: blur(3px) brightness(1.05);
+  -webkit-backdrop-filter: blur(3px) brightness(1.05);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 2px;
+  background: rgba(255, 248, 216, 0.256);
+  height: 140px;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -495,6 +500,7 @@
   align-items: center;
   padding: 4px 10px;
   margin-bottom: 2px;
+  background: rgba(255, 255, 255, 1);
 }
 
 .wrd-source-selector {
@@ -538,7 +544,7 @@
 
 .wrd-source-select {
   flex: 1;
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 3px;
   padding: 3px 6px;
@@ -771,7 +777,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(220, 200, 40, 0.22);
+  background: rgba(252, 210, 42, 0.16);
   pointer-events: none;
   display: flex;
 }
@@ -780,19 +786,19 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 2px;
+  width: 12px;
   background: rgba(240, 220, 60, 0.9);
-  box-shadow: 0 0 6px rgba(240, 220, 60, 0.6), 0 0 12px rgba(240, 220, 60, 0.3);
+  box-shadow: 0 0 6px rgba(253, 212, 61, 0.5), 0 0 12px rgba(89, 191, 251, 0.8);
 }
 
 .wrd-region-line--left  { left: 0; }
 .wrd-region-line--right { right: 0; }
 
 .wrd-region-handle {
-  width: 9px;
+  width: 2px;
   cursor: ew-resize;
   pointer-events: auto;
-  background: transparent;
+  background: rgba(0, 0, 0, 0.5);
   z-index: 2;
 }
 
