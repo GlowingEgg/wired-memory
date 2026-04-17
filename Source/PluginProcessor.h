@@ -78,10 +78,12 @@ private:
     int recordBufferPos_      = 0;
     bool wasCapturing_        = false;
 
-    // -- Sample playback --
-    std::atomic<bool>  playbackActive_ { false };
-    std::atomic<int>   playbackPos_    { 0 };
-    std::atomic<int>   sampleLength_   { 0 };   // length of recorded sample in frames
+    // -- Sample playback (varispeed) --
+    std::atomic<bool>  playbackActive_  { false };
+    std::atomic<bool>  playbackPending_ { false };  // message thread signals start
+    double             playbackPosFrac_ = 0.0;      // fractional position (audio thread only)
+    std::atomic<float> playbackProgress_ { 0.0f };  // normalised progress for UI
+    std::atomic<int>   sampleLength_    { 0 };       // length of recorded sample in frames
 
     // -- Captured sample snapshot (read by editor timer) --
     juce::SpinLock sampleLock_;

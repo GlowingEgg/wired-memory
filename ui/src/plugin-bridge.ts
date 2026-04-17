@@ -34,12 +34,19 @@ export interface ToggleState {
 
 const mockSliders = new Map<string, { normValue: number; listeners: Set<SliderListener> }>();
 
+const mockSliderDefaults: Record<string, number> = {
+  speed: 0.5,   // ~1x
+  start: 0.0,
+  length: 1.0,
+};
+
 function getMockSlider(name: string) {
   if (!mockSliders.has(name)) {
-    // Seed from URL param for shareable previews: ?gain=0.75
+    // Seed from URL param for shareable previews: ?speed=0.5
     const urlParam = new URLSearchParams(window.location.search).get(name);
+    const defaultVal = mockSliderDefaults[name] ?? 0.5;
     mockSliders.set(name, {
-      normValue: urlParam != null ? parseFloat(urlParam) : 0.5,
+      normValue: urlParam != null ? parseFloat(urlParam) : defaultVal,
       listeners: new Set(),
     });
   }

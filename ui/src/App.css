@@ -171,7 +171,7 @@
   flex-shrink: 0;
 }
 
-.wrd-monitor-sample .wrd-monitor-canvas,
+.wrd-monitor-sample .wrd-sample-canvas-wrap,
 .wrd-monitor-sample .wrd-monitor-empty {
   height: 96px;
   flex: none;
@@ -754,12 +754,37 @@
   animation: wrd-proc-pulse 1.5s ease-in-out infinite;
 }
 
+.wrd-sample-canvas-wrap {
+  position: relative;
+  height: 96px;
+  flex: none;
+}
+
 .wrd-sample-canvas {
-  flex: 1;
   width: 100%;
-  min-height: 0;
+  height: 100%;
   display: block;
 }
+
+/* ── Start / Length region overlay ──────────────────────────────────── */
+.wrd-region-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+
+.wrd-region-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.wrd-region-line--left  { left: 0; }
+.wrd-region-line--right { right: 0; }
 
 /* ── Sample controls (inside sample viewer) ────────────────────────── */
 .wrd-sample-controls {

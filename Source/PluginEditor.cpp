@@ -69,7 +69,9 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
     : AudioProcessorEditor (&p),
       audioProcessor (p)
 #if JUCE_WEB_BROWSER
-      , gainAttachment    (*p.apvts.getParameter ("gain"),    gainRelay,    nullptr)
+      , speedAttachment   (*p.apvts.getParameter ("speed"),   speedRelay,   nullptr)
+      , startAttachment   (*p.apvts.getParameter ("start"),   startRelay,   nullptr)
+      , lengthAttachment  (*p.apvts.getParameter ("length"),  lengthRelay,  nullptr)
       , captureAttachment (*p.apvts.getParameter ("capture"), captureRelay, nullptr)
       , monitorAttachment (*p.apvts.getParameter ("monitor"), monitorRelay, nullptr)
 #endif
@@ -150,7 +152,9 @@ void WiredMemoryAudioProcessorEditor::resized()
         // Create WebView lazily — ensures component has a native peer
         auto options = juce::WebBrowserComponent::Options{}
             .withNativeIntegrationEnabled()
-            .withOptionsFrom (gainRelay)
+            .withOptionsFrom (speedRelay)
+            .withOptionsFrom (startRelay)
+            .withOptionsFrom (lengthRelay)
             .withOptionsFrom (captureRelay)
             .withOptionsFrom (monitorRelay)
             // JS → C++: set capture source by bundle ID

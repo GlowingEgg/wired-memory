@@ -19,9 +19,15 @@ private:
     WiredMemoryAudioProcessor& audioProcessor;
 
 #if JUCE_WEB_BROWSER
-    // Slider relays
-    juce::WebSliderRelay gainRelay { "gain" };
-    juce::WebSliderParameterAttachment gainAttachment;
+    // Slider relays — playback controls
+    juce::WebSliderRelay speedRelay  { "speed" };
+    juce::WebSliderParameterAttachment speedAttachment;
+
+    juce::WebSliderRelay startRelay  { "start" };
+    juce::WebSliderParameterAttachment startAttachment;
+
+    juce::WebSliderRelay lengthRelay { "length" };
+    juce::WebSliderParameterAttachment lengthAttachment;
 
     // Toggle relays for capture and monitor
     juce::WebToggleButtonRelay captureRelay { "capture" };

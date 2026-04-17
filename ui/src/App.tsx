@@ -206,11 +206,34 @@ function BackgroundCanvas() {
   return <canvas ref={ref} className="wrd-bg-canvas" />;
 }
 
-/* ── SVG knob ── */
-function Knob({ label, value, unit, color = "light" }: {
-  label: string; value: string; unit?: string; color?: "light" | "amber" | "cyan"
+/* ── SVG knob (interactive) ── */
+function Knob({ label, normalizedValue, displayValue, unit, color = "light", onChange }: {
+  label: string;
+  normalizedValue: number;
+  displayValue: string;
+  unit?: string;
+  color?: "light" | "amber" | "cyan";
+  onChange?: (normalized: number) => void;
 }) {
-  const norm = Math.max(0, Math.min(1, (parseFloat(value) || 0) / 100));
+  const dragRef = useRef<{ startY: number; startValue: number } | null>(null);
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    if (!onChange) return;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { startY: e.clientY, startValue: normalizedValue };
+  }, [onChange, normalizedValue]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current || !onChange) return;
+    const delta = (dragRef.current.startY - e.clientY) / 150;
+    onChange(Math.max(0, Math.min(1, dragRef.current.startValue + delta)));
+  }, [onChange]);
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+  }, []);
+
+  const norm = Math.max(0, Math.min(1, normalizedValue));
   const startA = -225;
   const sweep = norm * 270;
   const endA = startA + sweep;
@@ -222,7 +245,13 @@ function Knob({ label, value, unit, color = "light" }: {
   const py = (a: number) => cy + r * Math.sin(rad(a));
 
   return (
-    <div className="wrd-knob">
+    <div
+      className="wrd-knob"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      style={onChange ? { cursor: "ns-resize", touchAction: "none" } : undefined}
+    >
       <svg width="36" height="36" viewBox="0 0 36 36" className="wrd-knob-svg">
         <path
           d={`M ${px(startA)} ${py(startA)} A ${r} ${r} 0 1 1 ${px(trackEndA)} ${py(trackEndA)}`}
@@ -242,7 +271,7 @@ function Knob({ label, value, unit, color = "light" }: {
         />
       </svg>
       <div className="wrd-knob-readout">
-        <span className={`wrd-val--${color}`}>{value}</span>
+        <span className={`wrd-val--${color}`}>{displayValue}</span>
         {unit && <span className="wrd-unit">{unit}</span>}
       </div>
       <div className="wrd-knob-label">{label}</div>
@@ -409,11 +438,13 @@ function CaptureButton({ state, onClick }: { state: CaptureState; onClick: () =>
 }
 
 /* ── Sample waveform viewer ── */
-function SampleWaveform({ state, sampleData, playing, playProgress, children }: {
+function SampleWaveform({ state, sampleData, playing, playProgress, startNorm, lengthNorm, children }: {
   state: CaptureState;
   sampleData: number[];
   playing: boolean;
   playProgress: number;
+  startNorm: number;
+  lengthNorm: number;
   children?: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -525,7 +556,19 @@ function SampleWaveform({ state, sampleData, playing, playProgress, children }: 
         </div>
       )}
       {state === "done" && (
-        <canvas ref={canvasRef} className="wrd-monitor-canvas wrd-sample-canvas" />
+        <div className="wrd-sample-canvas-wrap">
+          <canvas ref={canvasRef} className="wrd-monitor-canvas wrd-sample-canvas" />
+          <div
+            className="wrd-region-overlay"
+            style={{
+              left: `${startNorm * 100}%`,
+              width: `${Math.min(lengthNorm, 1 - startNorm) * 100}%`,
+            }}
+          >
+            <div className="wrd-region-line wrd-region-line--left" />
+            <div className="wrd-region-line wrd-region-line--right" />
+          </div>
+        </div>
       )}
       {children}
     </div>
@@ -577,8 +620,16 @@ function SourceSelector({
 
 /* ── Main app ── */
 export default function App() {
-  const gainParam = useJuceSlider("gain");
-  const gainPct = (gainParam.value * 100).toFixed(0);
+  const speedParam = useJuceSlider("speed");
+  const startParam = useJuceSlider("start");
+  const lengthParam = useJuceSlider("length");
+
+  // Convert normalised speed to actual value (matches JUCE NormalisableRange skew=0.5)
+  // JUCE: actual = 0.1 + 3.9 * pow(normalised, 1/0.5) = 0.1 + 3.9 * normalised^2
+  const speedActual = 0.1 + 3.9 * Math.pow(speedParam.value, 2.0);
+  const speedDisplay = (speedActual * 100).toFixed(0);
+  const startDisplay = (startParam.value * 100).toFixed(0);
+  const lengthDisplay = (lengthParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
 
@@ -751,7 +802,7 @@ export default function App() {
               />
             } />
             <CaptureButton state={captureState} onClick={handleCapture} />
-            <SampleWaveform state={captureState} sampleData={sampleData} playing={playing} playProgress={playProgress}>
+            <SampleWaveform state={captureState} sampleData={sampleData} playing={playing} playProgress={playProgress} startNorm={startParam.value} lengthNorm={lengthParam.value}>
               <div className="wrd-sample-controls">
                 <button
                   className={`wrd-play-btn ${playing ? "wrd-play-btn--active" : ""}`}
@@ -761,10 +812,9 @@ export default function App() {
                   {playing ? "⏹" : "▶"}
                 </button>
                 <div className="wrd-sample-knobs">
-                  <Knob label="GAIN" value={gainPct} unit="%" color="light" />
-                  <Knob label="SPEED" value="100" unit="%" color="amber" />
-                  <Knob label="START" value="0" unit="ms" color="cyan" />
-                  <Knob label="LENGTH" value="100" unit="%" color="light" />
+                  <Knob label="SPEED" normalizedValue={speedParam.value} displayValue={speedDisplay} unit="%" color="amber" onChange={speedParam.set} />
+                  <Knob label="START" normalizedValue={startParam.value} displayValue={startDisplay} unit="%" color="cyan" onChange={startParam.set} />
+                  <Knob label="LENGTH" normalizedValue={lengthParam.value} displayValue={lengthDisplay} unit="%" color="light" onChange={lengthParam.set} />
                 </div>
                 <div className="wrd-sample-toggles">
                   <Toggle label="LOOP" on={false} />

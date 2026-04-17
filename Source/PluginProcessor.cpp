@@ -16,10 +16,22 @@ WiredMemoryAudioProcessor::createParameterLayout()
     juce::AudioProcessorValueTreeState::ParameterLayout layout;
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "gain", 1 },
-        "Gain",
+        juce::ParameterID { "speed", 1 },
+        "Speed",
+        juce::NormalisableRange<float> (0.1f, 4.0f, 0.0f, 0.5f),
+        1.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "start", 1 },
+        "Start",
         juce::NormalisableRange<float> (0.0f, 1.0f),
-        0.5f));
+        0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "length", 1 },
+        "Length",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        1.0f));
 
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "capture", 1 },
@@ -83,38 +95,57 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const int numSamples  = buffer.getNumSamples();
 
-    const bool captureOn = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
-    const float gain     = apvts.getRawParameterValue ("gain")->load();
+    const bool captureOn  = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
+    const float speed     = apvts.getRawParameterValue ("speed")->load();
+    const float startNorm = apvts.getRawParameterValue ("start")->load();
+    const float lenNorm   = apvts.getRawParameterValue ("length")->load();
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
 
-    // ── Sample playback ─────────────────────────────────────────────────
+    // ── Handle pending playback start (set by message thread) ───────────
+    if (playbackPending_.exchange (false))
+    {
+        const int totalLen = sampleLength_.load();
+        playbackPosFrac_ = static_cast<double> (startNorm) * totalLen;
+        playbackActive_.store (true);
+    }
+
+    // ── Sample playback (varispeed) ─────────────────────────────────────
     if (playbackActive_.load() && recordBuffer_ && ! captureOn)
     {
-        int pos    = playbackPos_.load();
-        int length = sampleLength_.load();
+        const int totalLen = sampleLength_.load();
+        const int startFrame  = static_cast<int> (startNorm * totalLen);
+        const int regionLen   = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
+        const int endFrame    = juce::jmin (startFrame + regionLen, totalLen);
 
-        if (pos < length)
+        for (int i = 0; i < numSamples; ++i)
         {
-            const int framesToPlay = juce::jmin (numSamples, length - pos);
-            const float* src = recordBuffer_.get() + pos;
-
-            // Write mono sample to all output channels, apply gain
-            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+            if (playbackPosFrac_ >= static_cast<double> (endFrame))
             {
-                float* dest = buffer.getWritePointer (ch);
-                for (int i = 0; i < framesToPlay; ++i)
-                    dest[i] = src[i] * gain;
+                playbackActive_.store (false);
+                playbackProgress_.store (0.0f);
+                break;
             }
 
-            playbackPos_.store (pos + framesToPlay);
+            // Linear interpolation
+            const int idx0 = static_cast<int> (playbackPosFrac_);
+            const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
+            const float frac = static_cast<float> (playbackPosFrac_ - idx0);
+            const float sample = recordBuffer_[idx0] * (1.0f - frac)
+                               + recordBuffer_[idx1] * frac;
+
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                buffer.getWritePointer (ch)[i] = sample;
+
+            playbackPosFrac_ += static_cast<double> (speed);
         }
-        else
+
+        // Update progress for UI
+        if (playbackActive_.load() && regionLen > 0)
         {
-            // Reached end of sample
-            playbackActive_.store (false);
-            playbackPos_.store (0);
+            const double elapsed = playbackPosFrac_ - static_cast<double> (startFrame);
+            playbackProgress_.store (static_cast<float> (elapsed / regionLen));
         }
     }
 
@@ -210,24 +241,20 @@ bool WiredMemoryAudioProcessor::readSampleSnapshot (float* dest)
 void WiredMemoryAudioProcessor::startPlayback()
 {
     if (sampleLength_.load() > 0)
-    {
-        playbackPos_.store (0);
-        playbackActive_.store (true);
-    }
+        playbackPending_.store (true);
 }
 
 void WiredMemoryAudioProcessor::stopPlayback()
 {
     playbackActive_.store (false);
-    playbackPos_.store (0);
+    playbackProgress_.store (0.0f);
 }
 
 float WiredMemoryAudioProcessor::getPlaybackProgress() const
 {
-    const int length = sampleLength_.load();
-    if (length <= 0 || ! playbackActive_.load())
+    if (! playbackActive_.load())
         return 0.0f;
-    return static_cast<float> (playbackPos_.load()) / static_cast<float> (length);
+    return playbackProgress_.load();
 }
 
 bool WiredMemoryAudioProcessor::hasEditor() const { return true; }
