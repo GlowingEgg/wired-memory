@@ -259,38 +259,8 @@ function Toggle({ label, on, onClick }: { label: string; on: boolean; onClick?: 
   );
 }
 
-/* ── Data readout ── */
-function Readout({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="wrd-readout">
-      <div className="wrd-readout-val">{value}</div>
-      <div className="wrd-readout-label">{label}</div>
-    </div>
-  );
-}
-
-/* ── Waveform scope ── */
-function Scope() {
-  const pts: string[] = [];
-  for (let i = 0; i <= 100; i++) {
-    const x = (i / 100) * 180;
-    const y = 16 + Math.sin((i / 100) * Math.PI * 5) * 10
-      + Math.sin((i / 100) * Math.PI * 13) * 3
-      + noise2D(i * 0.07, 4.4) * 4;
-    pts.push(`${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`);
-  }
-  return (
-    <div className="wrd-scope">
-      <svg viewBox="0 0 180 32" preserveAspectRatio="none">
-        <path d={pts.join(" ")} fill="none" stroke="rgba(60,100,160,0.12)" strokeWidth="3" />
-        <path d={pts.join(" ")} fill="none" stroke="rgba(60,100,160,0.6)" strokeWidth="0.8" />
-      </svg>
-    </div>
-  );
-}
-
 /* ── Live waveform visualiser (incoming signal) ── */
-function LiveWaveform() {
+function LiveWaveform({ sourceSelector }: { sourceSelector: React.ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bufferRef = useRef<number[]>(new Array(128).fill(0));
 
@@ -400,8 +370,7 @@ function LiveWaveform() {
   return (
     <div className="wrd-glass wrd-monitor-live">
       <div className="wrd-monitor-header">
-        <span className="wrd-monitor-label">INPUT</span>
-        <span className="wrd-monitor-tag">LIVE</span>
+        {sourceSelector}
       </div>
       <canvas ref={canvasRef} className="wrd-monitor-canvas" />
     </div>
@@ -437,7 +406,7 @@ function CaptureButton({ state, onClick }: { state: CaptureState; onClick: () =>
 }
 
 /* ── Sample waveform viewer ── */
-function SampleWaveform({ state, sampleData }: { state: CaptureState; sampleData: number[] }) {
+function SampleWaveform({ state, sampleData, children }: { state: CaptureState; sampleData: number[]; children?: React.ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -538,6 +507,7 @@ function SampleWaveform({ state, sampleData }: { state: CaptureState; sampleData
       {state === "done" && (
         <canvas ref={canvasRef} className="wrd-monitor-canvas wrd-sample-canvas" />
       )}
+      {children}
     </div>
   );
 }
@@ -695,61 +665,32 @@ export default function App() {
             <div className="wrd-corner wrd-corner--tr" />
             <div className="wrd-corner wrd-corner--bl" />
             <div className="wrd-corner wrd-corner--br" />
-            <div className="wrd-vf-data">
-              <span className={captureState === "recording" ? "wrd-rec wrd-rec--active" : "wrd-rec"}>REC ●</span>
-              <span>SCStream</span>
-              <span>{selectedSource ? sources.find(s => s.bundleId === selectedSource)?.displayName ?? "..." : "---"}</span>
-            </div>
           </div>
-          <LiveWaveform />
+          <LiveWaveform sourceSelector={
+            <SourceSelector
+              sources={sources}
+              selected={selectedSource}
+              onSelect={handleSourceSelect}
+              permissionDenied={permissionDenied}
+            />
+          } />
           <CaptureButton state={captureState} onClick={handleCapture} />
-          <SampleWaveform state={captureState} sampleData={sampleData} />
-        </div>
-
-        {/* Source selector */}
-        <div className="wrd-glass wrd-source-bar">
-          <SourceSelector
-            sources={sources}
-            selected={selectedSource}
-            onSelect={handleSourceSelect}
-            permissionDenied={permissionDenied}
-          />
-        </div>
-
-        {/* Control panel */}
-        <div className="wrd-glass wrd-panel">
-          {/* Row 1: readouts + scope + transport */}
-          <div className="wrd-panel-top">
-            <div className="wrd-readouts">
-              <Readout value={`${gainPct}%`} label="GAIN" />
-              <Readout value="44.1k" label="RATE" />
-              <Readout value="0:00" label="POS" />
+          <SampleWaveform state={captureState} sampleData={sampleData}>
+            <div className="wrd-sample-controls">
+              <button className="wrd-play-btn">▶</button>
+              <button className="wrd-stop-btn">⏹</button>
+              <div className="wrd-sample-knobs">
+                <Knob label="GAIN" value={gainPct} unit="%" color="light" />
+                <Knob label="SPEED" value="100" unit="%" color="amber" />
+                <Knob label="START" value="0" unit="ms" color="cyan" />
+                <Knob label="LENGTH" value="100" unit="%" color="light" />
+              </div>
+              <div className="wrd-sample-toggles">
+                <Toggle label="LOOP" on={false} />
+                <Toggle label="REV" on={false} />
+              </div>
             </div>
-            <Scope />
-            <div className="wrd-transport">
-              <div className="wrd-transport-btn">⏮</div>
-              <div className="wrd-transport-btn">▶</div>
-              <div className="wrd-transport-btn wrd-transport-btn--active">●</div>
-              <div className="wrd-transport-btn">⏹</div>
-            </div>
-          </div>
-
-          {/* Row 2: knobs + toggles */}
-          <div className="wrd-panel-mid">
-            <div className="wrd-knobs">
-              <Knob label="GAIN" value={gainPct} unit="%" color="light" />
-              <Knob label="SPEED" value="100" unit="%" color="amber" />
-              <Knob label="START" value="0" unit="ms" color="cyan" />
-              <Knob label="LENGTH" value="100" unit="%" color="light" />
-              <Knob label="LOOP" value="0" unit="" color="amber" />
-            </div>
-
-            <div className="wrd-toggles">
-              <Toggle label="LOOP" on={false} />
-              <Toggle label="REVERSE" on={false} />
-              <Toggle label="MONITOR" on={false} />
-            </div>
-          </div>
+          </SampleWaveform>
         </div>
 
         {/* Bottom bar */}

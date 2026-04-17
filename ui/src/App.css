@@ -729,6 +729,95 @@
   display: block;
 }
 
+/* ── Sample controls (inside sample viewer) ────────────────────────── */
+.wrd-sample-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+.wrd-play-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(60, 100, 160, 0.3);
+  background: rgba(60, 100, 160, 0.08);
+  color: rgba(60, 100, 160, 0.85);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.wrd-play-btn:hover {
+  background: rgba(60, 100, 160, 0.15);
+  border-color: rgba(60, 100, 160, 0.5);
+  box-shadow: 0 0 10px rgba(60, 100, 160, 0.2);
+}
+
+.wrd-play-btn:active {
+  transform: scale(0.94);
+}
+
+.wrd-stop-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 2px;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.4);
+  color: rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.wrd-stop-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+.wrd-sample-knobs {
+  display: flex;
+  gap: 4px;
+  margin-left: 4px;
+}
+
+.wrd-sample-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-left: auto;
+}
+
+/* ── Source selector inside live monitor header ─────────────────────── */
+.wrd-monitor-header .wrd-source-selector {
+  font-size: 8px;
+}
+
+.wrd-monitor-header .wrd-source-select {
+  font-size: 8px;
+  padding: 2px 4px;
+}
+
+.wrd-monitor-header .wrd-source-refresh {
+  font-size: 9px;
+  padding: 1px 4px;
+}
+
+.wrd-monitor-header .wrd-source-icon {
+  font-size: 8px;
+}
+
 /* ── Active recording indicator ──────────────────────────────────────── */
 .wrd-rec--active {
   color: rgba(220, 40, 40, 0.9) !important;
