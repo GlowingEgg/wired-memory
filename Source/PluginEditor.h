@@ -36,6 +36,12 @@ private:
     juce::WebToggleButtonRelay monitorRelay { "monitor" };
     juce::WebToggleButtonParameterAttachment monitorAttachment;
 
+    juce::WebToggleButtonRelay loopRelay { "loop" };
+    juce::WebToggleButtonParameterAttachment loopAttachment;
+
+    juce::WebToggleButtonRelay reverseRelay { "reverse" };
+    juce::WebToggleButtonParameterAttachment reverseAttachment;
+
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 
     /** Send the available source list to the JS frontend. */

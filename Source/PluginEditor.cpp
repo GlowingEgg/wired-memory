@@ -74,6 +74,8 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , lengthAttachment  (*p.apvts.getParameter ("length"),  lengthRelay,  nullptr)
       , captureAttachment (*p.apvts.getParameter ("capture"), captureRelay, nullptr)
       , monitorAttachment (*p.apvts.getParameter ("monitor"), monitorRelay, nullptr)
+      , loopAttachment    (*p.apvts.getParameter ("loop"),    loopRelay,    nullptr)
+      , reverseAttachment (*p.apvts.getParameter ("reverse"), reverseRelay, nullptr)
 #endif
 {
     setSize (728, 546);
@@ -157,6 +159,8 @@ void WiredMemoryAudioProcessorEditor::resized()
             .withOptionsFrom (lengthRelay)
             .withOptionsFrom (captureRelay)
             .withOptionsFrom (monitorRelay)
+            .withOptionsFrom (loopRelay)
+            .withOptionsFrom (reverseRelay)
             // JS → C++: set capture source by bundle ID
             .withNativeFunction ("sck_setSource", [this] (auto& args, auto complete) {
                 auto* cap = audioProcessor.getCapture();
