@@ -406,7 +406,13 @@ function CaptureButton({ state, onClick }: { state: CaptureState; onClick: () =>
 }
 
 /* ── Sample waveform viewer ── */
-function SampleWaveform({ state, sampleData, children }: { state: CaptureState; sampleData: number[]; children?: React.ReactNode }) {
+function SampleWaveform({ state, sampleData, playing, playProgress, children }: {
+  state: CaptureState;
+  sampleData: number[];
+  playing: boolean;
+  playProgress: number;
+  children?: React.ReactNode;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -473,10 +479,21 @@ function SampleWaveform({ state, sampleData, children }: { state: CaptureState; 
     ctx.strokeStyle = "rgba(40, 140, 170, 0.75)";
     ctx.lineWidth = 1;
     ctx.stroke();
-  }, [state, sampleData]);
 
-  const tagLabel = state === "recording" ? "RECORDING" : state === "processing" ? "PROCESSING" : state === "done" ? "LOADED" : "IDLE";
-  const tagClass = state === "recording" ? "wrd-monitor-tag--rec" : state === "processing" ? "wrd-monitor-tag--proc" : "";
+    // Playhead
+    if (playing && playProgress > 0) {
+      const px = playProgress * w;
+      ctx.strokeStyle = "rgba(60, 100, 160, 0.8)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, h);
+      ctx.stroke();
+    }
+  }, [state, sampleData, playing, playProgress]);
+
+  const tagLabel = state === "recording" ? "RECORDING" : state === "processing" ? "PROCESSING" : state === "done" ? (playing ? "PLAYING" : "LOADED") : "IDLE";
+  const tagClass = state === "recording" ? "wrd-monitor-tag--rec" : state === "processing" ? "wrd-monitor-tag--proc" : playing ? "wrd-monitor-tag--play" : "";
 
   return (
     <div className="wrd-glass wrd-monitor-sample">
@@ -567,19 +584,56 @@ export default function App() {
   const [sampleData, setSampleData] = useState<number[]>([]);
   const captureTimerRef = useRef<number | null>(null);
 
+  // Playback state
+  const [playing, setPlaying] = useState(false);
+  const [playProgress, setPlayProgress] = useState(0);
+  const playRafRef = useRef<number | null>(null);
+  const playStartRef = useRef<number>(0);
+  const playDurationMs = 2000; // sample duration in dev mode
+
+  const stopPlayback = useCallback(() => {
+    setPlaying(false);
+    setPlayProgress(0);
+    if (playRafRef.current) {
+      cancelAnimationFrame(playRafRef.current);
+      playRafRef.current = null;
+    }
+  }, []);
+
+  const handlePlayStop = useCallback(() => {
+    if (playing) {
+      stopPlayback();
+    } else if (captureState === "done" && sampleData.length > 0) {
+      setPlaying(true);
+      playStartRef.current = performance.now();
+      const tick = () => {
+        const elapsed = performance.now() - playStartRef.current;
+        const progress = elapsed / playDurationMs;
+        if (progress >= 1) {
+          setPlaying(false);
+          setPlayProgress(0);
+          playRafRef.current = null;
+          return;
+        }
+        setPlayProgress(progress);
+        playRafRef.current = requestAnimationFrame(tick);
+      };
+      playRafRef.current = requestAnimationFrame(tick);
+    }
+  }, [playing, captureState, sampleData, stopPlayback]);
+
+  // Stop playback when a new recording starts
   const handleCapture = useCallback(() => {
     if (captureState === "idle" || captureState === "done") {
-      // Start recording
+      stopPlayback();
       setCaptureState("recording");
       setSampleData([]);
       captureParam.set(true);
     } else if (captureState === "recording") {
-      // Stop recording — sample data arrives via sck:sample event
       captureParam.set(false);
       setCaptureState("processing");
 
       if (!isInsidePlugin()) {
-        // Dev mode: generate fake sample data after a short delay
         captureTimerRef.current = window.setTimeout(() => {
           const fakeSample: number[] = [];
           for (let i = 0; i < 512; i++) {
@@ -595,7 +649,7 @@ export default function App() {
         }, 800);
       }
     }
-  }, [captureState, captureParam]);
+  }, [captureState, captureParam, stopPlayback]);
 
   // Listen for real sample data from the C++ backend
   useEffect(() => {
@@ -609,6 +663,7 @@ export default function App() {
   useEffect(() => {
     return () => {
       if (captureTimerRef.current) clearTimeout(captureTimerRef.current);
+      if (playRafRef.current) cancelAnimationFrame(playRafRef.current);
     };
   }, []);
 
@@ -623,7 +678,6 @@ export default function App() {
       setPermissionDenied(status.permissionDenied);
     });
 
-    // Request initial sources list
     refreshSources();
 
     return () => { unsub1(); unsub2(); };
@@ -658,39 +712,46 @@ export default function App() {
           <span className="wrd-topbar-time">--:--</span>
         </div>
 
-        {/* Monitor section — live input + sample workbench */}
-        <div className="wrd-monitor-section">
-          <div className="wrd-viewfinder">
-            <div className="wrd-corner wrd-corner--tl" />
-            <div className="wrd-corner wrd-corner--tr" />
-            <div className="wrd-corner wrd-corner--bl" />
-            <div className="wrd-corner wrd-corner--br" />
-          </div>
-          <LiveWaveform sourceSelector={
-            <SourceSelector
-              sources={sources}
-              selected={selectedSource}
-              onSelect={handleSourceSelect}
-              permissionDenied={permissionDenied}
-            />
-          } />
-          <CaptureButton state={captureState} onClick={handleCapture} />
-          <SampleWaveform state={captureState} sampleData={sampleData}>
-            <div className="wrd-sample-controls">
-              <button className="wrd-play-btn">▶</button>
-              <button className="wrd-stop-btn">⏹</button>
-              <div className="wrd-sample-knobs">
-                <Knob label="GAIN" value={gainPct} unit="%" color="light" />
-                <Knob label="SPEED" value="100" unit="%" color="amber" />
-                <Knob label="START" value="0" unit="ms" color="cyan" />
-                <Knob label="LENGTH" value="100" unit="%" color="light" />
-              </div>
-              <div className="wrd-sample-toggles">
-                <Toggle label="LOOP" on={false} />
-                <Toggle label="REV" on={false} />
-              </div>
+        {/* Centered workstation */}
+        <div className="wrd-workstation">
+          <div className="wrd-monitor-section">
+            <div className="wrd-viewfinder">
+              <div className="wrd-corner wrd-corner--tl" />
+              <div className="wrd-corner wrd-corner--tr" />
+              <div className="wrd-corner wrd-corner--bl" />
+              <div className="wrd-corner wrd-corner--br" />
             </div>
-          </SampleWaveform>
+            <LiveWaveform sourceSelector={
+              <SourceSelector
+                sources={sources}
+                selected={selectedSource}
+                onSelect={handleSourceSelect}
+                permissionDenied={permissionDenied}
+              />
+            } />
+            <CaptureButton state={captureState} onClick={handleCapture} />
+            <SampleWaveform state={captureState} sampleData={sampleData} playing={playing} playProgress={playProgress}>
+              <div className="wrd-sample-controls">
+                <button
+                  className={`wrd-play-btn ${playing ? "wrd-play-btn--active" : ""}`}
+                  onClick={handlePlayStop}
+                  disabled={captureState !== "done"}
+                >
+                  {playing ? "⏹" : "▶"}
+                </button>
+                <div className="wrd-sample-knobs">
+                  <Knob label="GAIN" value={gainPct} unit="%" color="light" />
+                  <Knob label="SPEED" value="100" unit="%" color="amber" />
+                  <Knob label="START" value="0" unit="ms" color="cyan" />
+                  <Knob label="LENGTH" value="100" unit="%" color="light" />
+                </div>
+                <div className="wrd-sample-toggles">
+                  <Toggle label="LOOP" on={false} />
+                  <Toggle label="REV" on={false} />
+                </div>
+              </div>
+            </SampleWaveform>
+          </div>
         </div>
 
         {/* Bottom bar */}

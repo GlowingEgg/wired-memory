@@ -86,7 +86,6 @@
   flex-direction: column;
   height: 100vh;
   padding: 8px;
-  gap: 6px;
   box-sizing: border-box;
 }
 
@@ -137,32 +136,39 @@
   color: rgba(30, 30, 40, 0.5);
 }
 
-/* ── Monitor section ────────────────────────────────────────────────── */
-.wrd-monitor-section {
+/* ── Workstation centering wrapper ──────────────────────────────────── */
+.wrd-workstation {
   flex: 1;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  position: relative;
+  align-items: center;
   min-height: 0;
+  padding: 8px 0;
+}
+
+/* ── Monitor section ────────────────────────────────────────────────── */
+.wrd-monitor-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  position: relative;
 }
 
 .wrd-monitor-live {
-  flex: 3;
+  height: 64px;
   display: flex;
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 .wrd-monitor-sample {
-  flex: 2;
   display: flex;
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-  min-height: 0;
+  min-height: 100px;
 }
 
 .wrd-monitor-header {
@@ -687,6 +693,10 @@
   animation: wrd-proc-pulse 1.5s ease-in-out infinite;
 }
 
+.wrd-monitor-tag--play {
+  color: rgba(60, 100, 160, 0.8) !important;
+}
+
 @keyframes wrd-proc-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -781,25 +791,21 @@
   transform: scale(0.94);
 }
 
-.wrd-stop-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 2px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(255, 255, 255, 0.4);
-  color: rgba(0, 0, 0, 0.4);
-  font-size: 11px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.15s ease;
-  flex-shrink: 0;
+.wrd-play-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
-.wrd-stop-btn:hover {
-  background: rgba(255, 255, 255, 0.6);
-  color: rgba(0, 0, 0, 0.6);
+.wrd-play-btn:disabled:hover {
+  background: rgba(60, 100, 160, 0.08);
+  border-color: rgba(60, 100, 160, 0.3);
+  box-shadow: none;
+}
+
+.wrd-play-btn--active {
+  background: rgba(60, 100, 160, 0.18);
+  border-color: rgba(60, 100, 160, 0.5);
+  box-shadow: 0 0 10px rgba(60, 100, 160, 0.25);
 }
 
 .wrd-sample-knobs {

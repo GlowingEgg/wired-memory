@@ -93,18 +93,18 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (captureOn && ! wasCapturing_)
         recordBufferPos_ = 0;
 
-    // Drain the ring buffer so it doesn't fill up, and grab samples for waveform vis
+    // Always drain the ring buffer so the waveform scope stays live
     float captureL[2048], captureR[2048];
     int samplesRead = 0;
 
-    if (captureOn && capture_ && capture_->isStreamReady())
+    if (capture_ && capture_->isStreamReady())
     {
         float* capturePtrs[2] = { captureL, captureR };
         samplesRead = capture_->readSamples (capturePtrs, 2,
                                               juce::jmin (numSamples, 2048));
 
-        // Accumulate into the record buffer (mono — left channel)
-        if (samplesRead > 0 && recordBuffer_)
+        // Accumulate into the record buffer only while recording (mono — left channel)
+        if (captureOn && samplesRead > 0 && recordBuffer_)
         {
             const int space = recordBufferCapacity_ - recordBufferPos_;
             const int toWrite = juce::jmin (samplesRead, space);
