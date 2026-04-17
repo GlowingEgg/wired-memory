@@ -148,12 +148,10 @@
 /* ── Monitor section ────────────────────────────────────────────────── */
 .wrd-monitor-section {
   width: 100%;
-  height: 100%;
   display: flex;
   flex-direction: column;
   gap: 4px;
   position: relative;
-  min-height: 0;
 }
 
 .wrd-monitor-live {
@@ -166,12 +164,17 @@
 }
 
 .wrd-monitor-sample {
-  height: 96px;
   display: flex;
   flex-direction: column;
   padding: 0;
   overflow: hidden;
   flex-shrink: 0;
+}
+
+.wrd-monitor-sample .wrd-monitor-canvas,
+.wrd-monitor-sample .wrd-monitor-empty {
+  height: 96px;
+  flex: none;
 }
 
 .wrd-monitor-header {
