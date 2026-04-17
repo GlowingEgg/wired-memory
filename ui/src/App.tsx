@@ -207,13 +207,14 @@ function BackgroundCanvas() {
 }
 
 /* ── SVG knob (interactive) ── */
-function Knob({ label, normalizedValue, displayValue, unit, color = "light", onChange }: {
+function Knob({ label, normalizedValue, displayValue, unit, color = "light", onChange, defaultValue }: {
   label: string;
   normalizedValue: number;
   displayValue: string;
   unit?: string;
   color?: "light" | "amber" | "cyan";
   onChange?: (normalized: number) => void;
+  defaultValue?: number;
 }) {
   const dragRef = useRef<{ startY: number; startValue: number } | null>(null);
 
@@ -221,6 +222,8 @@ function Knob({ label, normalizedValue, displayValue, unit, color = "light", onC
     if (!onChange) return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
     dragRef.current = { startY: e.clientY, startValue: normalizedValue };
+    document.body.style.userSelect = "none";
+    document.body.style.webkitUserSelect = "none";
   }, [onChange, normalizedValue]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
@@ -231,7 +234,14 @@ function Knob({ label, normalizedValue, displayValue, unit, color = "light", onC
 
   const handlePointerUp = useCallback(() => {
     dragRef.current = null;
+    document.body.style.userSelect = "";
+    document.body.style.webkitUserSelect = "";
   }, []);
+
+  const handleDoubleClick = useCallback(() => {
+    if (!onChange || defaultValue === undefined) return;
+    onChange(defaultValue);
+  }, [onChange, defaultValue]);
 
   const norm = Math.max(0, Math.min(1, normalizedValue));
   const startA = -225;
@@ -250,6 +260,7 @@ function Knob({ label, normalizedValue, displayValue, unit, color = "light", onC
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
+      onDoubleClick={handleDoubleClick}
       style={onChange ? { cursor: "ns-resize", touchAction: "none" } : undefined}
     >
       <svg width="36" height="36" viewBox="0 0 36 36" className="wrd-knob-svg">
@@ -438,16 +449,58 @@ function CaptureButton({ state, onClick }: { state: CaptureState; onClick: () =>
 }
 
 /* ── Sample waveform viewer ── */
-function SampleWaveform({ state, sampleData, playing, playProgress, startNorm, lengthNorm, children }: {
+function SampleWaveform({ state, sampleData, playing, playProgress, startNorm, lengthNorm, onStartChange, onLengthChange, children }: {
   state: CaptureState;
   sampleData: number[];
   playing: boolean;
   playProgress: number;
   startNorm: number;
   lengthNorm: number;
+  onStartChange?: (v: number) => void;
+  onLengthChange?: (v: number) => void;
   children?: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ mode: "left" | "right" | "body"; startX: number; origStart: number; origLength: number } | null>(null);
+
+  // Region drag handlers
+  const handleRegionPointerDown = useCallback((e: React.PointerEvent, mode: "left" | "right" | "body") => {
+    if (!onStartChange || !onLengthChange) return;
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    dragRef.current = { mode, startX: e.clientX, origStart: startNorm, origLength: lengthNorm };
+    document.body.style.userSelect = "none";
+    document.body.style.webkitUserSelect = "none";
+  }, [onStartChange, onLengthChange, startNorm, lengthNorm]);
+
+  const handleRegionPointerMove = useCallback((e: React.PointerEvent) => {
+    if (!dragRef.current || !onStartChange || !onLengthChange || !wrapRef.current) return;
+    const wrapWidth = wrapRef.current.getBoundingClientRect().width;
+    const deltaNorm = (e.clientX - dragRef.current.startX) / wrapWidth;
+    const { mode, origStart, origLength } = dragRef.current;
+
+    if (mode === "left") {
+      const newStart = Math.max(0, Math.min(origStart + origLength - 0.01, origStart + deltaNorm));
+      const newLength = origLength - (newStart - origStart);
+      onStartChange(newStart);
+      onLengthChange(Math.max(0.01, newLength));
+    } else if (mode === "right") {
+      const newLength = Math.max(0.01, Math.min(1 - origStart, origLength + deltaNorm));
+      onLengthChange(newLength);
+    } else {
+      // body drag — move both start and end together
+      const maxStart = 1 - origLength;
+      const newStart = Math.max(0, Math.min(maxStart, origStart + deltaNorm));
+      onStartChange(newStart);
+    }
+  }, [onStartChange, onLengthChange]);
+
+  const handleRegionPointerUp = useCallback(() => {
+    dragRef.current = null;
+    document.body.style.userSelect = "";
+    document.body.style.webkitUserSelect = "";
+  }, []);
 
   useEffect(() => {
     if (state !== "done" || sampleData.length === 0) return;
@@ -514,9 +567,10 @@ function SampleWaveform({ state, sampleData, playing, playProgress, startNorm, l
     ctx.lineWidth = 1;
     ctx.stroke();
 
-    // Playhead
+    // Playhead — mapped within the selected region
     if (playing && playProgress > 0) {
-      const px = playProgress * w;
+      const effectiveLen = Math.min(lengthNorm, 1 - startNorm);
+      const px = (startNorm + playProgress * effectiveLen) * w;
       ctx.strokeStyle = "rgba(60, 100, 160, 0.8)";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
@@ -524,10 +578,12 @@ function SampleWaveform({ state, sampleData, playing, playProgress, startNorm, l
       ctx.lineTo(px, h);
       ctx.stroke();
     }
-  }, [state, sampleData, playing, playProgress]);
+  }, [state, sampleData, playing, playProgress, startNorm, lengthNorm]);
 
   const tagLabel = state === "recording" ? "RECORDING" : state === "processing" ? "PROCESSING" : state === "done" ? (playing ? "PLAYING" : "LOADED") : "IDLE";
   const tagClass = state === "recording" ? "wrd-monitor-tag--rec" : state === "processing" ? "wrd-monitor-tag--proc" : playing ? "wrd-monitor-tag--play" : "";
+
+  const effectiveLen = Math.min(lengthNorm, 1 - startNorm);
 
   return (
     <div className="wrd-glass wrd-monitor-sample">
@@ -556,17 +612,32 @@ function SampleWaveform({ state, sampleData, playing, playProgress, startNorm, l
         </div>
       )}
       {state === "done" && (
-        <div className="wrd-sample-canvas-wrap">
+        <div
+          ref={wrapRef}
+          className="wrd-sample-canvas-wrap"
+          onPointerMove={handleRegionPointerMove}
+          onPointerUp={handleRegionPointerUp}
+        >
           <canvas ref={canvasRef} className="wrd-monitor-canvas wrd-sample-canvas" />
           <div
             className="wrd-region-overlay"
             style={{
               left: `${startNorm * 100}%`,
-              width: `${Math.min(lengthNorm, 1 - startNorm) * 100}%`,
+              width: `${effectiveLen * 100}%`,
             }}
           >
-            <div className="wrd-region-line wrd-region-line--left" />
-            <div className="wrd-region-line wrd-region-line--right" />
+            <div
+              className="wrd-region-line wrd-region-line--left wrd-region-handle"
+              onPointerDown={(e) => handleRegionPointerDown(e, "left")}
+            />
+            <div
+              className="wrd-region-body"
+              onPointerDown={(e) => handleRegionPointerDown(e, "body")}
+            />
+            <div
+              className="wrd-region-line wrd-region-line--right wrd-region-handle"
+              onPointerDown={(e) => handleRegionPointerDown(e, "right")}
+            />
           </div>
         </div>
       )}
@@ -623,13 +694,35 @@ export default function App() {
   const speedParam = useJuceSlider("speed");
   const startParam = useJuceSlider("start");
   const lengthParam = useJuceSlider("length");
+  const loopParam = useJuceToggle("loop");
+  const reverseParam = useJuceToggle("reverse");
+
+  // Speed knob: non-linear UI curve for higher resolution near center (1x).
+  // We map a "curved" 0-1 knob position through a power curve so that
+  // movement near 12 o'clock (center) produces smaller parameter changes.
+  const speedCurveExp = 2.5;
+  // Parameter → knob position (expand center)
+  const speedToKnob = (paramNorm: number): number => {
+    const centered = (paramNorm - 0.5) * 2; // -1 to 1
+    return Math.sign(centered) * Math.pow(Math.abs(centered), 1 / speedCurveExp) / 2 + 0.5;
+  };
+  // Knob position → parameter (compress center)
+  const knobToSpeed = (knobNorm: number): number => {
+    const centered = (knobNorm - 0.5) * 2; // -1 to 1
+    return Math.sign(centered) * Math.pow(Math.abs(centered), speedCurveExp) / 2 + 0.5;
+  };
+
+  const speedKnobPos = speedToKnob(speedParam.value);
+  const handleSpeedChange = useCallback((knobNorm: number) => {
+    speedParam.set(knobToSpeed(knobNorm));
+  }, [speedParam]);
 
   // Convert normalised speed to actual value (matches JUCE NormalisableRange skew=0.5)
   // JUCE: actual = 0.1 + 3.9 * pow(normalised, 1/0.5) = 0.1 + 3.9 * normalised^2
   const speedActual = 0.1 + 3.9 * Math.pow(speedParam.value, 2.0);
   const speedDisplay = (speedActual * 100).toFixed(0);
-  const startDisplay = (startParam.value * 100).toFixed(0);
-  const lengthDisplay = (lengthParam.value * 100).toFixed(0);
+  const startDisplay = (startParam.value * 100).toFixed(1);
+  const lengthDisplay = (lengthParam.value * 100).toFixed(1);
 
   const captureParam = useJuceToggle("capture");
 
@@ -802,7 +895,7 @@ export default function App() {
               />
             } />
             <CaptureButton state={captureState} onClick={handleCapture} />
-            <SampleWaveform state={captureState} sampleData={sampleData} playing={playing} playProgress={playProgress} startNorm={startParam.value} lengthNorm={lengthParam.value}>
+            <SampleWaveform state={captureState} sampleData={sampleData} playing={playing} playProgress={playProgress} startNorm={startParam.value} lengthNorm={lengthParam.value} onStartChange={startParam.set} onLengthChange={lengthParam.set}>
               <div className="wrd-sample-controls">
                 <button
                   className={`wrd-play-btn ${playing ? "wrd-play-btn--active" : ""}`}
@@ -812,13 +905,13 @@ export default function App() {
                   {playing ? "⏹" : "▶"}
                 </button>
                 <div className="wrd-sample-knobs">
-                  <Knob label="SPEED" normalizedValue={speedParam.value} displayValue={speedDisplay} unit="%" color="amber" onChange={speedParam.set} />
-                  <Knob label="START" normalizedValue={startParam.value} displayValue={startDisplay} unit="%" color="cyan" onChange={startParam.set} />
-                  <Knob label="LENGTH" normalizedValue={lengthParam.value} displayValue={lengthDisplay} unit="%" color="light" onChange={lengthParam.set} />
+                  <Knob label="SPEED" normalizedValue={speedKnobPos} displayValue={speedDisplay} unit="%" color="amber" onChange={handleSpeedChange} defaultValue={0.5} />
+                  <Knob label="START" normalizedValue={startParam.value} displayValue={startDisplay} unit="%" color="cyan" onChange={startParam.set} defaultValue={0} />
+                  <Knob label="LENGTH" normalizedValue={lengthParam.value} displayValue={lengthDisplay} unit="%" color="light" onChange={lengthParam.set} defaultValue={1} />
                 </div>
                 <div className="wrd-sample-toggles">
-                  <Toggle label="LOOP" on={false} />
-                  <Toggle label="REV" on={false} />
+                  <Toggle label="LOOP" on={loopParam.value} onClick={() => loopParam.set(!loopParam.value)} />
+                  <Toggle label="REV" on={reverseParam.value} onClick={() => reverseParam.set(!reverseParam.value)} />
                 </div>
               </div>
             </SampleWaveform>

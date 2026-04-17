@@ -771,8 +771,9 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(220, 200, 40, 0.12);
   pointer-events: none;
+  display: flex;
 }
 
 .wrd-region-line {
@@ -780,11 +781,41 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(220, 200, 40, 0.6);
 }
 
 .wrd-region-line--left  { left: 0; }
 .wrd-region-line--right { right: 0; }
+
+.wrd-region-handle {
+  width: 7px;
+  cursor: ew-resize;
+  pointer-events: auto;
+  background: transparent;
+  z-index: 2;
+}
+
+.wrd-region-handle.wrd-region-line--left {
+  left: -3px;
+}
+
+.wrd-region-handle.wrd-region-line--right {
+  right: -3px;
+}
+
+.wrd-region-body {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 7px;
+  right: 7px;
+  cursor: grab;
+  pointer-events: auto;
+}
+
+.wrd-region-body:active {
+  cursor: grabbing;
+}
 
 /* ── Sample controls (inside sample viewer) ────────────────────────── */
 .wrd-sample-controls {

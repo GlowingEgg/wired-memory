@@ -43,6 +43,16 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Monitor",
         false));
 
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "loop", 1 },
+        "Loop",
+        false));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "reverse", 1 },
+        "Reverse",
+        false));
+
     return layout;
 }
 
@@ -99,6 +109,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float speed     = apvts.getRawParameterValue ("speed")->load();
     const float startNorm = apvts.getRawParameterValue ("start")->load();
     const float lenNorm   = apvts.getRawParameterValue ("length")->load();
+    const bool  loopOn    = apvts.getRawParameterValue ("loop")->load() >= 0.5f;
+    const bool  reverseOn = apvts.getRawParameterValue ("reverse")->load() >= 0.5f;
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -107,29 +119,58 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     if (playbackPending_.exchange (false))
     {
         const int totalLen = sampleLength_.load();
-        playbackPosFrac_ = static_cast<double> (startNorm) * totalLen;
+        const int startFrame = static_cast<int> (startNorm * totalLen);
+        const int regionLen  = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
+        const int endFrame   = juce::jmin (startFrame + regionLen, totalLen);
+
+        playbackPosFrac_ = reverseOn
+            ? static_cast<double> (endFrame - 1)
+            : static_cast<double> (startFrame);
         playbackActive_.store (true);
     }
 
-    // ── Sample playback (varispeed) ─────────────────────────────────────
+    // ── Sample playback (varispeed, loop, reverse) ─────────────────────
     if (playbackActive_.load() && recordBuffer_ && ! captureOn)
     {
-        const int totalLen = sampleLength_.load();
+        const int totalLen    = sampleLength_.load();
         const int startFrame  = static_cast<int> (startNorm * totalLen);
         const int regionLen   = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
         const int endFrame    = juce::jmin (startFrame + regionLen, totalLen);
 
         for (int i = 0; i < numSamples; ++i)
         {
-            if (playbackPosFrac_ >= static_cast<double> (endFrame))
+            // Check bounds — forward or reverse
+            if (reverseOn)
             {
-                playbackActive_.store (false);
-                playbackProgress_.store (0.0f);
-                break;
+                if (playbackPosFrac_ < static_cast<double> (startFrame))
+                {
+                    if (loopOn)
+                        playbackPosFrac_ = static_cast<double> (endFrame - 1);
+                    else
+                    {
+                        playbackActive_.store (false);
+                        playbackProgress_.store (0.0f);
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                if (playbackPosFrac_ >= static_cast<double> (endFrame))
+                {
+                    if (loopOn)
+                        playbackPosFrac_ = static_cast<double> (startFrame);
+                    else
+                    {
+                        playbackActive_.store (false);
+                        playbackProgress_.store (0.0f);
+                        break;
+                    }
+                }
             }
 
             // Linear interpolation
-            const int idx0 = static_cast<int> (playbackPosFrac_);
+            const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (playbackPosFrac_));
             const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
             const float frac = static_cast<float> (playbackPosFrac_ - idx0);
             const float sample = recordBuffer_[idx0] * (1.0f - frac)
@@ -138,13 +179,17 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                 buffer.getWritePointer (ch)[i] = sample;
 
-            playbackPosFrac_ += static_cast<double> (speed);
+            playbackPosFrac_ += reverseOn
+                ? -static_cast<double> (speed)
+                :  static_cast<double> (speed);
         }
 
         // Update progress for UI
         if (playbackActive_.load() && regionLen > 0)
         {
-            const double elapsed = playbackPosFrac_ - static_cast<double> (startFrame);
+            const double elapsed = reverseOn
+                ? static_cast<double> (endFrame - 1) - playbackPosFrac_
+                : playbackPosFrac_ - static_cast<double> (startFrame);
             playbackProgress_.store (static_cast<float> (elapsed / regionLen));
         }
     }
