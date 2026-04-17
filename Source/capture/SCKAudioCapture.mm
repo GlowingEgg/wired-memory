@@ -262,6 +262,10 @@ void SCKAudioCapture::getAvailableSources (SourcesCallback cb)
                 }
             }
 
+            // Skip macOS "AutoFill" pseudo-apps (e.g. "AutoFill (Chrome)")
+            if (allowed && [app.applicationName.lowercaseString hasPrefix:@"autofill"])
+                allowed = NO;
+
             if (allowed)
             {
                 sources.push_back ({
