@@ -499,6 +499,22 @@
   color: rgba(180, 60, 30, 0.7);
 }
 
+.wrd-source-selector--empty {
+  font-weight: bold;
+}
+
+.wrd-source-selector--empty .wrd-source-select {
+  border-color: rgba(60, 100, 160, 0.45);
+  box-shadow: 0 0 8px rgba(60, 100, 160, 0.2);
+  font-weight: bold;
+  color: rgba(0, 0, 0, 0.7);
+}
+
+.wrd-source-selector--empty .wrd-source-icon {
+  color: rgba(60, 100, 160, 0.85);
+  text-shadow: 0 0 6px rgba(60, 100, 160, 0.4);
+}
+
 .wrd-source-icon {
   font-size: 10px;
   color: rgba(60, 100, 160, 0.6);

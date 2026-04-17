@@ -534,7 +534,7 @@ function SourceSelector({
   }
 
   return (
-    <div className="wrd-source-selector">
+    <div className={`wrd-source-selector ${!selected ? "wrd-source-selector--empty" : ""}`}>
       <span className="wrd-source-icon">◉</span>
       <select
         className="wrd-source-select"
