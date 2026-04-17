@@ -166,12 +166,12 @@
 }
 
 .wrd-monitor-sample {
-  flex: 2;
+  height: 96px;
   display: flex;
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-  min-height: 0;
+  flex-shrink: 0;
 }
 
 .wrd-monitor-header {
