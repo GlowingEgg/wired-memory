@@ -142,20 +142,22 @@
   display: flex;
   align-items: center;
   min-height: 0;
-  padding: 8px 0;
+  padding: 12px 0;
 }
 
 /* ── Monitor section ────────────────────────────────────────────────── */
 .wrd-monitor-section {
   width: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   position: relative;
+  min-height: 0;
 }
 
 .wrd-monitor-live {
-  height: 64px;
+  height: 96px;
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -164,11 +166,12 @@
 }
 
 .wrd-monitor-sample {
+  flex: 2;
   display: flex;
   flex-direction: column;
   padding: 0;
   overflow: hidden;
-  min-height: 100px;
+  min-height: 0;
 }
 
 .wrd-monitor-header {
