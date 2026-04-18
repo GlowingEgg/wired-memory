@@ -38,6 +38,9 @@ private:
     juce::WebSliderRelay scatterRelay { "scatter" };
     juce::WebSliderParameterAttachment scatterAttachment;
 
+    juce::WebSliderRelay pitchScatterRelay { "pitch_scatter" };
+    juce::WebSliderParameterAttachment pitchScatterAttachment;
+
     // Toggle relays for capture and monitor
     juce::WebToggleButtonRelay captureRelay { "capture" };
     juce::WebToggleButtonParameterAttachment captureAttachment;

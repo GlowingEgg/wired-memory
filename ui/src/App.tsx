@@ -849,6 +849,7 @@ export default function App() {
   const grainSizeParam = useJuceSlider("grain_size");
   const densityParam = useJuceSlider("density");
   const scatterParam = useJuceSlider("scatter");
+  const pitchScatterParam = useJuceSlider("pitch_scatter");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
 
@@ -904,6 +905,9 @@ export default function App() {
 
   // Scatter: 0–100%
   const scatterDisplay = (scatterParam.value * 100).toFixed(0);
+
+  // Pitch Scatter: 0–100%
+  const pitchScatterDisplay = (pitchScatterParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
 
@@ -994,6 +998,7 @@ export default function App() {
       grainSizeParam.set(0.4286);
       densityParam.set(0);
       scatterParam.set(0);
+      pitchScatterParam.set(0);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1029,6 +1034,7 @@ export default function App() {
     grainSizeParam,
     densityParam,
     scatterParam,
+    pitchScatterParam,
     loopParam,
     reverseParam,
     speedDefaultNorm,
@@ -1189,6 +1195,15 @@ export default function App() {
                     unit="%"
                     color="light"
                     onChange={scatterParam.set}
+                    defaultValue={0}
+                  />
+                  <Knob
+                    label="PITCH"
+                    normalizedValue={pitchScatterParam.value}
+                    displayValue={pitchScatterDisplay}
+                    unit="%"
+                    color="cyan"
+                    onChange={pitchScatterParam.set}
                     defaultValue={0}
                   />
                 </div>

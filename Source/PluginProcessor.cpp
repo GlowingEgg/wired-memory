@@ -71,6 +71,12 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.0f));
 
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "pitch_scatter", 1 },
+        "Pitch Scatter",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.0f));
+
     return layout;
 }
 
@@ -139,6 +145,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float grainSizeSec = apvts.getRawParameterValue ("grain_size")->load();
     const float density      = apvts.getRawParameterValue ("density")->load();
     const float scatter      = apvts.getRawParameterValue ("scatter")->load();
+    const float pitchScatter = apvts.getRawParameterValue ("pitch_scatter")->load();
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -249,7 +256,16 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             }
                             g.startPos  = grainStart;
                             g.phase     = grainStart;
-                            g.speed     = static_cast<double> (speed);
+
+                            // Per-grain pitch: masterSpeed * 2^(rnd * pitchScatter)
+                            // rnd in [-1, 1] → ±1 octave at pitchScatter=1.0
+                            double grainSpeed = static_cast<double> (speed);
+                            if (pitchScatter > 0.0f)
+                            {
+                                const float rnd = nextRandom() * 2.0f - 1.0f; // [-1, 1]
+                                grainSpeed *= std::exp2 (static_cast<double> (rnd * pitchScatter));
+                            }
+                            g.speed     = grainSpeed;
                             g.lifetime  = grainSizeSamples;
                             g.totalLife = grainSizeSamples;
                             g.active    = true;
