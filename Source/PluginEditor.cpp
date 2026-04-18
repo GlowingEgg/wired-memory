@@ -134,9 +134,32 @@ void WiredMemoryAudioProcessorEditor::timerCallback()
     {
         float progress = audioProcessor.getPlaybackProgress();
         bool playing = progress > 0.0f;
+        float duration = audioProcessor.getSampleDuration();
         juce::String json = "{\"playing\":" + juce::String (playing ? "true" : "false")
-                          + ",\"progress\":" + juce::String (progress, 4) + "}";
+                          + ",\"progress\":" + juce::String (progress, 4)
+                          + ",\"duration\":" + juce::String (duration, 4) + "}";
         webBrowser->emitEventIfBrowserIsVisible ("sck:playback", json);
+    }
+
+    // Push grain snapshot to the UI
+    {
+        WiredMemoryAudioProcessor::GrainSnapshot grains[kMaxGrains];
+        int count = 0;
+        if (audioProcessor.readGrainSnapshot (grains, count) && count > 0)
+        {
+            juce::String json = "[";
+            for (int i = 0; i < count; ++i)
+            {
+                if (i > 0) json += ",";
+                json += juce::String (grains[i].position, 4);
+            }
+            json += "]";
+            webBrowser->emitEventIfBrowserIsVisible ("sck:grains", json);
+        }
+        else
+        {
+            webBrowser->emitEventIfBrowserIsVisible ("sck:grains", "[]");
+        }
     }
 #endif
 }

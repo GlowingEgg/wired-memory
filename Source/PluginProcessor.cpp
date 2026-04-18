@@ -18,7 +18,7 @@ WiredMemoryAudioProcessor::createParameterLayout()
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "speed", 1 },
         "Speed",
-        juce::NormalisableRange<float> (0.1f, 4.0f, 0.0f, 0.5f),
+        juce::NormalisableRange<float> (0.1f, 10.0f, 0.0f, 0.3f),
         1.0f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
@@ -397,6 +397,23 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 : playbackPosFrac_ - static_cast<double> (startFrame);
             playbackProgress_.store (static_cast<float> (elapsed / regionLen));
         }
+
+        // Write grain snapshot for UI visualisation
+        {
+            const juce::SpinLock::ScopedLockType lock (grainSnapshotLock_);
+            int count = 0;
+            for (int gi = 0; gi < kMaxGrains && count < kMaxGrains; ++gi)
+            {
+                if (grainPool_[gi].active)
+                {
+                    grainSnapshot_[count].position = static_cast<float> (grainPool_[gi].phase / totalLen);
+                    grainSnapshot_[count].active   = true;
+                    ++count;
+                }
+            }
+            grainSnapshotCount_ = count;
+            grainSnapshotReady_ = true;
+        }
     }
 
     // ── Spectral freeze / drift + smear crossfade ────────────────────────
@@ -627,6 +644,25 @@ float WiredMemoryAudioProcessor::getPlaybackProgress() const
     if (! playbackActive_.load())
         return 0.0f;
     return playbackProgress_.load();
+}
+
+float WiredMemoryAudioProcessor::getSampleDuration() const
+{
+    const int len = sampleLength_.load();
+    if (len <= 0 || currentSampleRate_ <= 0.0)
+        return 0.0f;
+    return static_cast<float> (len) / static_cast<float> (currentSampleRate_);
+}
+
+bool WiredMemoryAudioProcessor::readGrainSnapshot (GrainSnapshot* dest, int& count)
+{
+    const juce::SpinLock::ScopedLockType lock (grainSnapshotLock_);
+    if (! grainSnapshotReady_)
+        return false;
+    count = grainSnapshotCount_;
+    std::memcpy (dest, grainSnapshot_.data(), sizeof (GrainSnapshot) * static_cast<size_t> (count));
+    grainSnapshotReady_ = false;
+    return true;
 }
 
 bool WiredMemoryAudioProcessor::hasEditor() const { return true; }

@@ -3,6 +3,7 @@ import { createNoise2D } from "simplex-noise";
 import "./App.css";
 import { useJuceSlider, useJuceToggle } from "./lib/useJuceParam";
 import {
+  addGrainListener,
   addPlaybackListener,
   addSampleListener,
   addSourcesListener,
@@ -564,6 +565,8 @@ function SampleWaveform({
   playProgress,
   startNorm,
   lengthNorm,
+  grainSizeNorm,
+  grainPositions,
   onStartChange,
   onLengthChange,
   children,
@@ -574,6 +577,8 @@ function SampleWaveform({
   playProgress: number;
   startNorm: number;
   lengthNorm: number;
+  grainSizeNorm: number;
+  grainPositions: number[];
   onStartChange?: (v: number) => void;
   onLengthChange?: (v: number) => void;
   children?: React.ReactNode;
@@ -730,7 +735,31 @@ function SampleWaveform({
       ctx.lineTo(px, h);
       ctx.stroke();
     }
-  }, [state, sampleData, playing, playProgress, startNorm, lengthNorm]);
+
+    // Grain size window — orange rectangle from left edge of selected region
+    if (grainSizeNorm > 0 && playing) {
+      const gsW = grainSizeNorm * w;
+      const regionLeft = startNorm * w;
+      ctx.fillStyle = "rgba(220, 160, 40, 0.18)";
+      ctx.fillRect(regionLeft, 0, gsW, h);
+      ctx.strokeStyle = "rgba(220, 160, 40, 0.5)";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(regionLeft, 0, gsW, h);
+    }
+
+    // Per-grain cursors — lightweight lines for each active grain
+    if (grainPositions.length > 0) {
+      ctx.strokeStyle = "rgba(60, 100, 160, 0.3)";
+      ctx.lineWidth = 1;
+      for (const pos of grainPositions) {
+        const gx = pos * w;
+        ctx.beginPath();
+        ctx.moveTo(gx, 0);
+        ctx.lineTo(gx, h);
+        ctx.stroke();
+      }
+    }
+  }, [state, sampleData, playing, playProgress, startNorm, lengthNorm, grainSizeNorm, grainPositions]);
 
   const tagLabel =
     state === "recording"
@@ -889,10 +918,10 @@ export default function App() {
   // Speed knob: non-linear UI curve for higher resolution near center (1x).
   // We map a "curved" 0-1 knob position through a power curve so that
   // movement near 12 o'clock (center) produces smaller parameter changes.
-  const speedCurveExp = 2.5;
+  const speedCurveExp = 3.0;
   // Normalised parameter value that corresponds to 1.0x speed
-  // JUCE: norm = pow((1.0 - 0.1) / (4.0 - 0.1), skew) where skew=0.5
-  const speedDefaultNorm = Math.sqrt(0.9 / 3.9); // ≈ 0.4804
+  // JUCE: norm = pow((1.0 - 0.1) / (10.0 - 0.1), skew) where skew=0.3
+  const speedDefaultNorm = Math.pow(0.9 / 9.9, 0.3); // ≈ 0.4547
   // Parameter → knob position (expand center)
   const speedToKnob = (paramNorm: number): number => {
     const centered = (paramNorm - 0.5) * 2; // -1 to 1
@@ -920,9 +949,9 @@ export default function App() {
     [speedParam],
   );
 
-  // Convert normalised speed to actual value (matches JUCE NormalisableRange skew=0.5)
-  // JUCE: actual = 0.1 + 3.9 * pow(normalised, 1/0.5) = 0.1 + 3.9 * normalised^2
-  const speedActual = 0.1 + 3.9 * Math.pow(speedParam.value, 2.0);
+  // Convert normalised speed to actual value (matches JUCE NormalisableRange skew=0.3)
+  // JUCE: actual = 0.1 + 9.9 * pow(normalised, 1/0.3)
+  const speedActual = 0.1 + 9.9 * Math.pow(speedParam.value, 1.0 / 0.3);
   const speedDisplay = (speedActual * 100).toFixed(0);
   const startDisplay = (startParam.value * 100).toFixed(1);
   const lengthDisplay = (lengthParam.value * 100).toFixed(1);
@@ -958,6 +987,7 @@ export default function App() {
   // Playback state — driven by C++ backend in plugin, local animation in dev
   const [playing, setPlaying] = useState(false);
   const [playProgress, setPlayProgress] = useState(0);
+  const [sampleDuration, setSampleDuration] = useState(0);
   const playRafRef = useRef<number | null>(null);
   const playStartRef = useRef<number>(0);
   const playDurationMs = 2000; // sample duration in dev mode
@@ -968,6 +998,7 @@ export default function App() {
     } else {
       setPlaying(false);
       setPlayProgress(0);
+      setGrainPositions([]);
       if (playRafRef.current) {
         cancelAnimationFrame(playRafRef.current);
         playRafRef.current = null;
@@ -1004,6 +1035,17 @@ export default function App() {
           } else {
             setPlayProgress(Math.max(0, Math.min(1, progress)));
           }
+          // Mock grain positions for dev mode
+          const effectiveLen = Math.min(lengthParam.value, 1 - startParam.value);
+          const headPos = startParam.value + Math.max(0, Math.min(1, progress)) * effectiveLen;
+          const density = Math.round(1 + 31 * densityParam.value);
+          const scatter = scatterParam.value;
+          const mockGrains: number[] = [];
+          for (let g = 0; g < density; g++) {
+            const jitter = (Math.random() - 0.5) * scatter * effectiveLen;
+            mockGrains.push(Math.max(0, Math.min(1, headPos + jitter)));
+          }
+          setGrainPositions(mockGrains);
           playRafRef.current = requestAnimationFrame(tick);
         };
         playRafRef.current = requestAnimationFrame(tick);
@@ -1023,6 +1065,17 @@ export default function App() {
     const unsub = addPlaybackListener((state) => {
       setPlaying(state.playing);
       setPlayProgress(state.progress);
+      if (state.duration > 0) setSampleDuration(state.duration);
+    });
+    return unsub;
+  }, []);
+
+  // Grain positions for visualization
+  const [grainPositions, setGrainPositions] = useState<number[]>([]);
+
+  useEffect(() => {
+    const unsub = addGrainListener((positions) => {
+      setGrainPositions(positions);
     });
     return unsub;
   }, []);
@@ -1176,6 +1229,12 @@ export default function App() {
               playProgress={playProgress}
               startNorm={startParam.value}
               lengthNorm={lengthParam.value}
+              grainSizeNorm={
+                (sampleDuration > 0 || !isInsidePlugin())
+                  ? grainSizeActual / (sampleDuration > 0 ? sampleDuration : playDurationMs / 1000)
+                  : 0
+              }
+              grainPositions={grainPositions}
               onStartChange={startParam.set}
               onLengthChange={lengthParam.set}
             >
@@ -1267,17 +1326,15 @@ export default function App() {
                     <div className="wrd-freeze-indicator" />
                     <span className="wrd-freeze-label">FREEZE</span>
                   </div>
-                  <div className={freezeParam.value ? "" : "wrd-knob-disabled"}>
-                    <Knob
-                      label="DRIFT"
-                      normalizedValue={driftParam.value}
-                      displayValue={driftDisplay}
-                      unit="%"
-                      color="cyan"
-                      onChange={driftParam.set}
-                      defaultValue={0}
-                    />
-                  </div>
+                  <Knob
+                    label="DRIFT"
+                    normalizedValue={driftParam.value}
+                    displayValue={driftDisplay}
+                    unit="%"
+                    color="cyan"
+                    onChange={driftParam.set}
+                    defaultValue={0}
+                  />
                   <Knob
                     label="SMEAR"
                     normalizedValue={smearParam.value}

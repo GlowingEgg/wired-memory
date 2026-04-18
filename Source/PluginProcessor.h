@@ -77,6 +77,20 @@ public:
     /** Returns normalised playback progress [0, 1], or 0 if not playing. */
     float getPlaybackProgress() const;
 
+    /** Returns the sample duration in seconds, or 0 if no sample is loaded. */
+    float getSampleDuration() const;
+
+    /** Grain snapshot for UI visualisation.
+        Each entry holds a normalised position within the full sample [0, 1].
+        Written by the audio thread, read by the editor timer. */
+    struct GrainSnapshot
+    {
+        float position = 0.0f;  // normalised position in sample [0, 1]
+        bool  active   = false;
+    };
+    static constexpr int kGrainSnapshotSize = kMaxGrains;
+    bool readGrainSnapshot (GrainSnapshot* dest, int& count);
+
 private:
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
 
@@ -105,6 +119,12 @@ private:
     std::array<Grain, kMaxGrains> grainPool_ {};
     double grainSpawnAccum_ = 0.0;  // accumulator for grain spawn timing
     double currentSampleRate_ = 44100.0;
+
+    // -- Grain snapshot for UI --
+    juce::SpinLock grainSnapshotLock_;
+    std::array<GrainSnapshot, kMaxGrains> grainSnapshot_ {};
+    int grainSnapshotCount_ = 0;
+    bool grainSnapshotReady_ = false;
 
     // -- Scatter RNG (xorshift32, no heap) --
     uint32_t rngState_ = 0x12345678;

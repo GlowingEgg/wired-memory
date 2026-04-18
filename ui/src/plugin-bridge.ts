@@ -35,7 +35,7 @@ export interface ToggleState {
 const mockSliders = new Map<string, { normValue: number; listeners: Set<SliderListener> }>();
 
 const mockSliderDefaults: Record<string, number> = {
-  speed: Math.sqrt(0.9 / 3.9),   // 1.0x — matches JUCE skew=0.5, range 0.1–4.0
+  speed: Math.pow(0.9 / 9.9, 0.3),   // 1.0x — matches JUCE skew=0.3, range 0.1–10.0
   start: 0.0,
   length: 1.0,
 };
@@ -302,6 +302,25 @@ export function stopPlayback(): void {
 export interface PlaybackState {
   playing: boolean;
   progress: number;
+  duration: number;
+}
+
+/**
+ * Listen for grain position snapshots pushed from C++ (~30fps).
+ * Each snapshot is an array of normalised sample positions [0, 1] for active grains.
+ * Returns an unsubscribe function.
+ */
+export function addGrainListener(
+  cb: (positions: number[]) => void
+): () => void {
+  return addBackendListener("sck:grains", (data) => {
+    try {
+      const positions = typeof data === "string" ? JSON.parse(data) : data;
+      cb(positions as number[]);
+    } catch {
+      cb([]);
+    }
+  });
 }
 
 /**
