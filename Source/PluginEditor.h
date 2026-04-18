@@ -57,9 +57,12 @@ private:
     juce::WebToggleButtonRelay reverseRelay { "reverse" };
     juce::WebToggleButtonParameterAttachment reverseAttachment;
 
-    // Spectral freeze / drift
+    // Spectral freeze / drift / smear
     juce::WebSliderRelay driftRelay { "drift" };
     juce::WebSliderParameterAttachment driftAttachment;
+
+    juce::WebSliderRelay smearRelay { "smear" };
+    juce::WebSliderParameterAttachment smearAttachment;
 
     juce::WebToggleButtonRelay freezeRelay { "freeze" };
     juce::WebToggleButtonParameterAttachment freezeAttachment;

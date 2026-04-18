@@ -154,7 +154,8 @@ private:
 
     // Freeze state
     bool wasFrozen_ = false;
-    int  freezeHopCounter_ = 0;   // counts samples until next resynthesis hop
+    bool hasFrozenFrame_ = false;  // true once at least one spectral frame has been captured
+    int  freezeHopCounter_ = 0;    // counts samples until next resynthesis hop
 
     // Drift RNG (separate from scatter RNG to avoid correlation)
     uint32_t driftRngState_ = 0xDEADBEEF;

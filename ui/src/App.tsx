@@ -884,6 +884,7 @@ export default function App() {
   const reverseParam = useJuceToggle("reverse");
   const freezeParam = useJuceToggle("freeze");
   const driftParam = useJuceSlider("drift");
+  const smearParam = useJuceSlider("smear");
 
   // Speed knob: non-linear UI curve for higher resolution near center (1x).
   // We map a "curved" 0-1 knob position through a power curve so that
@@ -943,6 +944,9 @@ export default function App() {
 
   // Drift: 0–100%
   const driftDisplay = (driftParam.value * 100).toFixed(0);
+
+  // Smear: 0–100%
+  const smearDisplay = (smearParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
 
@@ -1037,6 +1041,7 @@ export default function App() {
       shapeParam.set(0);
       freezeParam.set(false);
       driftParam.set(0);
+      smearParam.set(0);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1076,6 +1081,7 @@ export default function App() {
     shapeParam,
     freezeParam,
     driftParam,
+    smearParam,
     loopParam,
     reverseParam,
     speedDefaultNorm,
@@ -1272,6 +1278,15 @@ export default function App() {
                       defaultValue={0}
                     />
                   </div>
+                  <Knob
+                    label="SMEAR"
+                    normalizedValue={smearParam.value}
+                    displayValue={smearDisplay}
+                    unit="%"
+                    color="amber"
+                    onChange={smearParam.set}
+                    defaultValue={0}
+                  />
                 </div>
                 <div className="wrd-sample-toggles">
                   <Toggle

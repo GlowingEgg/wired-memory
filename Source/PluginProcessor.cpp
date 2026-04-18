@@ -94,6 +94,12 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.0f));
 
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "smear", 1 },
+        "Smear",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.0f));
+
     return layout;
 }
 
@@ -151,6 +157,7 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     driftVelocity_.fill (0.0f);
     fftWorkBuffer_.fill (0.0f);
     wasFrozen_ = false;
+    hasFrozenFrame_ = false;
     freezeHopCounter_ = 0;
     driftRngState_ = 0xDEADBEEF;
 }
@@ -188,6 +195,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const int   shapeType    = static_cast<int> (apvts.getRawParameterValue ("shape")->load());
     const bool  freezeOn     = apvts.getRawParameterValue ("freeze")->load() >= 0.5f;
     const float drift        = apvts.getRawParameterValue ("drift")->load();
+    const float smear        = apvts.getRawParameterValue ("smear")->load();
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -391,75 +399,78 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // ── Spectral freeze / drift ─────────────────────────────────────────
-    // Feed grain engine output into FFT input buffer for continuous analysis.
-    // When freeze activates, capture the current spectral frame.
-    // While frozen, replace buffer contents with resynthesized frozen spectrum.
+    // ── Spectral freeze / drift + smear crossfade ────────────────────────
+    // Dual-path architecture:
+    //   1. Grain engine output (already in buffer above)
+    //   2. Spectral resynthesis from last frozen frame
+    // Smear crossfades between them. Freeze toggle controls capture only.
     {
         const float twoPi = juce::MathConstants<float>::twoPi;
         float* outL = buffer.getWritePointer (0);
 
-        // Detect freeze on-edge
+        // Detect freeze on-edge → capture spectral frame
         const bool freezeEdge = freezeOn && ! wasFrozen_;
 
-        if (freezeOn)
+        // Feed grain output into FFT input buffer for analysis (only when not frozen,
+        // so we always have a recent frame ready when freeze is triggered)
+        if (! freezeOn)
         {
-            // ── Frozen resynthesis mode ──
-            // On freeze edge: capture current magnitude/phase into frozen storage
-            if (freezeEdge)
+            for (int i = 0; i < numSamples; ++i)
             {
-                // Run an FFT on whatever is currently in the input buffer
-                // to get the spectral snapshot
-                std::copy (fftInputBuffer_.begin(), fftInputBuffer_.end(),
-                           fftWorkBuffer_.begin());
-                // Apply analysis window
-                for (int i = 0; i < kFFTSize; ++i)
-                    fftWorkBuffer_[i] *= hannWindow_[i];
+                fftInputBuffer_[fftInputWritePos_] = outL[i];
+                fftInputWritePos_ = (fftInputWritePos_ + 1) % kFFTSize;
+            }
+        }
 
-                fft_.performRealOnlyForwardTransform (fftWorkBuffer_.data(), true);
+        if (freezeEdge)
+        {
+            // Capture current spectral frame into frozen storage
+            std::copy (fftInputBuffer_.begin(), fftInputBuffer_.end(),
+                       fftWorkBuffer_.begin());
+            for (int i = 0; i < kFFTSize; ++i)
+                fftWorkBuffer_[i] *= hannWindow_[i];
 
-                // Extract magnitude and phase → frozen storage
-                for (int bin = 0; bin <= kFFTSize / 2; ++bin)
-                {
-                    const float re = fftWorkBuffer_[bin * 2];
-                    const float im = fftWorkBuffer_[bin * 2 + 1];
-                    frozenMagnitude_[bin] = std::sqrt (re * re + im * im);
-                    frozenPhase_[bin]     = std::atan2 (im, re);
-                }
+            fft_.performRealOnlyForwardTransform (fftWorkBuffer_.data(), true);
 
-                // Reset drift velocities
-                driftVelocity_.fill (0.0f);
-
-                // Reset overlap-add buffer and hop counter for clean start
-                olaBuffer_.fill (0.0f);
-                olaReadPos_  = 0;
-                olaWritePos_ = 0;
-                freezeHopCounter_ = 0;
+            for (int bin = 0; bin <= kFFTSize / 2; ++bin)
+            {
+                const float re = fftWorkBuffer_[bin * 2];
+                const float im = fftWorkBuffer_[bin * 2 + 1];
+                frozenMagnitude_[bin] = std::sqrt (re * re + im * im);
+                frozenPhase_[bin]     = std::atan2 (im, re);
             }
 
-            // Generate frozen audio via overlap-add IFFT
+            driftVelocity_.fill (0.0f);
+            olaBuffer_.fill (0.0f);
+            olaReadPos_  = 0;
+            olaWritePos_ = 0;
+            freezeHopCounter_ = 0;
+            hasFrozenFrame_ = true;
+        }
+
+        // Run spectral resynthesis when needed:
+        // - Always when freeze is on (full spectral output)
+        // - When smear > 0 and we have a frozen frame (blend with grain)
+        const bool needSpectral = hasFrozenFrame_ && (freezeOn || smear > 0.0f);
+
+        if (needSpectral)
+        {
             for (int i = 0; i < numSamples; ++i)
             {
                 if (freezeHopCounter_ <= 0)
                 {
-                    // Time for a new resynthesis hop
                     freezeHopCounter_ = kHopSize;
 
-                    // Build complex spectrum from frozen magnitude + current phase
                     fftWorkBuffer_.fill (0.0f);
                     for (int bin = 0; bin <= kFFTSize / 2; ++bin)
                     {
-                        // Phase advancement: natural phase increment per hop
                         const float baseAdvance = twoPi * static_cast<float> (bin)
                                                 * static_cast<float> (kHopSize)
                                                 / static_cast<float> (kFFTSize);
 
-                        // Drift: smoothly evolving phase randomization
                         if (drift > 0.0f)
                         {
-                            // Slowly evolve drift velocity (random walk)
-                            const float rndNorm = nextDriftRandom() * 2.0f - 1.0f; // [-1, 1]
-                            // Blend towards new random target — higher drift = faster change
+                            const float rndNorm = nextDriftRandom() * 2.0f - 1.0f;
                             driftVelocity_[bin] += (rndNorm - driftVelocity_[bin]) * drift * 0.1f;
                             frozenPhase_[bin] += baseAdvance
                                                + drift * driftVelocity_[bin] * juce::MathConstants<float>::pi;
@@ -475,10 +486,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                         fftWorkBuffer_[bin * 2 + 1] = mag * std::sin (phase);
                     }
 
-                    // Inverse FFT
                     fft_.performRealOnlyInverseTransform (fftWorkBuffer_.data());
 
-                    // Apply synthesis window and overlap-add
                     for (int j = 0; j < kFFTSize; ++j)
                     {
                         const int pos = (olaWritePos_ + j) % kOLABufferSize;
@@ -487,27 +496,24 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     olaWritePos_ = (olaWritePos_ + kHopSize) % kOLABufferSize;
                 }
 
-                // Read from OLA buffer (with gain compensation for 75% overlap Hann: factor ~1.5)
-                const float freezeSample = olaBuffer_[olaReadPos_] * (2.0f / 3.0f);
-                olaBuffer_[olaReadPos_] = 0.0f;  // clear after reading
+                const float spectralSample = olaBuffer_[olaReadPos_] * (2.0f / 3.0f);
+                olaBuffer_[olaReadPos_] = 0.0f;
                 olaReadPos_ = (olaReadPos_ + 1) % kOLABufferSize;
                 freezeHopCounter_--;
 
-                // Write frozen output to all channels
+                // Determine effective smear: when freeze is on, force full spectral
+                const float effectiveSmear = freezeOn ? 1.0f : smear;
+
+                // Crossfade: grain (in buffer) vs spectral
+                const float grainSample = outL[i];
+                const float mixed = (1.0f - effectiveSmear) * grainSample
+                                  + effectiveSmear * spectralSample;
+
                 for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                    buffer.getWritePointer (ch)[i] = freezeSample;
+                    buffer.getWritePointer (ch)[i] = mixed;
             }
         }
-        else
-        {
-            // ── Not frozen — feed grain output into FFT input buffer for analysis ──
-            // (so we always have a recent frame ready when freeze is triggered)
-            for (int i = 0; i < numSamples; ++i)
-            {
-                fftInputBuffer_[fftInputWritePos_] = outL[i];
-                fftInputWritePos_ = (fftInputWritePos_ + 1) % kFFTSize;
-            }
-        }
+        // else: smear=0 and not frozen — grain output stays as-is (no spectral cost)
 
         wasFrozen_ = freezeOn;
     }

@@ -82,6 +82,7 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , loopAttachment    (*p.apvts.getParameter ("loop"),    loopRelay,    nullptr)
       , reverseAttachment (*p.apvts.getParameter ("reverse"), reverseRelay, nullptr)
       , driftAttachment   (*p.apvts.getParameter ("drift"),   driftRelay,   nullptr)
+      , smearAttachment   (*p.apvts.getParameter ("smear"),   smearRelay,   nullptr)
       , freezeAttachment  (*p.apvts.getParameter ("freeze"),  freezeRelay,  nullptr)
 #endif
 {
@@ -174,6 +175,7 @@ void WiredMemoryAudioProcessorEditor::resized()
             .withOptionsFrom (loopRelay)
             .withOptionsFrom (reverseRelay)
             .withOptionsFrom (driftRelay)
+            .withOptionsFrom (smearRelay)
             .withOptionsFrom (freezeRelay)
             // JS → C++: set capture source by bundle ID
             .withNativeFunction ("sck_setSource", [this] (auto& args, auto complete) {
