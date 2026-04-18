@@ -53,6 +53,18 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Reverse",
         false));
 
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "grain_size", 1 },
+        "Grain Size",
+        juce::NormalisableRange<float> (0.01f, 0.5f, 0.0f, 0.5f),
+        0.1f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "density", 1 },
+        "Density",
+        juce::NormalisableRange<float> (1.0f, 32.0f, 1.0f),
+        1.0f));
+
     return layout;
 }
 
@@ -78,11 +90,18 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
 
     capture_->prepareForPlayback (sampleRate, samplesPerBlock);
 
+    currentSampleRate_ = sampleRate;
+
     // Pre-allocate record buffer (mono, up to kMaxRecordSeconds)
     recordBufferCapacity_ = static_cast<int> (sampleRate * kMaxRecordSeconds);
     recordBuffer_ = std::make_unique<float[]> (static_cast<size_t> (recordBufferCapacity_));
     recordBufferPos_ = 0;
     wasCapturing_ = false;
+
+    // Reset grain pool
+    for (auto& g : grainPool_)
+        g.active = false;
+    grainSpawnAccum_ = 0.0;
 }
 void WiredMemoryAudioProcessor::releaseResources() {}
 
@@ -105,12 +124,14 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
     const int numSamples  = buffer.getNumSamples();
 
-    const bool captureOn  = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
-    const float speed     = apvts.getRawParameterValue ("speed")->load();
-    const float startNorm = apvts.getRawParameterValue ("start")->load();
-    const float lenNorm   = apvts.getRawParameterValue ("length")->load();
-    const bool  loopOn    = apvts.getRawParameterValue ("loop")->load() >= 0.5f;
-    const bool  reverseOn = apvts.getRawParameterValue ("reverse")->load() >= 0.5f;
+    const bool captureOn    = apvts.getRawParameterValue ("capture")->load() >= 0.5f;
+    const float speed       = apvts.getRawParameterValue ("speed")->load();
+    const float startNorm   = apvts.getRawParameterValue ("start")->load();
+    const float lenNorm     = apvts.getRawParameterValue ("length")->load();
+    const bool  loopOn      = apvts.getRawParameterValue ("loop")->load() >= 0.5f;
+    const bool  reverseOn   = apvts.getRawParameterValue ("reverse")->load() >= 0.5f;
+    const float grainSizeSec = apvts.getRawParameterValue ("grain_size")->load();
+    const float density      = apvts.getRawParameterValue ("density")->load();
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -126,10 +147,16 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         playbackPosFrac_ = reverseOn
             ? static_cast<double> (endFrame - 1)
             : static_cast<double> (startFrame);
+
+        // Reset grain state for fresh playback
+        for (auto& g : grainPool_)
+            g.active = false;
+        grainSpawnAccum_ = 0.0;
+
         playbackActive_.store (true);
     }
 
-    // ── Sample playback (varispeed, loop, reverse) ─────────────────────
+    // ── Sample playback (grain engine) ──────────────────────────────────
     if (playbackActive_.load() && recordBuffer_ && ! captureOn)
     {
         const int totalLen    = sampleLength_.load();
@@ -137,9 +164,13 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         const int regionLen   = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
         const int endFrame    = juce::jmin (startFrame + regionLen, totalLen);
 
+        const int grainSizeSamples = juce::jmax (1, static_cast<int> (grainSizeSec * currentSampleRate_));
+        const double spawnInterval = static_cast<double> (grainSizeSamples) / static_cast<double> (density);
+        const float gainComp = 1.0f / std::sqrt (density);
+
         for (int i = 0; i < numSamples; ++i)
         {
-            // Check bounds — forward or reverse
+            // ── Advance master playhead ──
             if (reverseOn)
             {
                 if (playbackPosFrac_ < static_cast<double> (startFrame))
@@ -148,9 +179,16 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                         playbackPosFrac_ = static_cast<double> (endFrame - 1);
                     else
                     {
-                        playbackActive_.store (false);
-                        playbackProgress_.store (0.0f);
-                        break;
+                        // Check if any grains are still active before stopping
+                        bool anyActive = false;
+                        for (const auto& g : grainPool_)
+                            if (g.active) { anyActive = true; break; }
+                        if (! anyActive)
+                        {
+                            playbackActive_.store (false);
+                            playbackProgress_.store (0.0f);
+                            break;
+                        }
                     }
                 }
             }
@@ -162,23 +200,85 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                         playbackPosFrac_ = static_cast<double> (startFrame);
                     else
                     {
-                        playbackActive_.store (false);
-                        playbackProgress_.store (0.0f);
-                        break;
+                        bool anyActive = false;
+                        for (const auto& g : grainPool_)
+                            if (g.active) { anyActive = true; break; }
+                        if (! anyActive)
+                        {
+                            playbackActive_.store (false);
+                            playbackProgress_.store (0.0f);
+                            break;
+                        }
                     }
                 }
             }
 
-            // Linear interpolation
-            const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (playbackPosFrac_));
-            const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
-            const float frac = static_cast<float> (playbackPosFrac_ - idx0);
-            const float sample = recordBuffer_[idx0] * (1.0f - frac)
-                               + recordBuffer_[idx1] * frac;
+            // ── Spawn grains ──
+            bool masterInRange = reverseOn
+                ? (playbackPosFrac_ >= static_cast<double> (startFrame))
+                : (playbackPosFrac_ < static_cast<double> (endFrame));
 
+            if (masterInRange)
+            {
+                grainSpawnAccum_ += 1.0;
+                while (grainSpawnAccum_ >= spawnInterval)
+                {
+                    grainSpawnAccum_ -= spawnInterval;
+
+                    // Find an inactive grain slot
+                    for (auto& g : grainPool_)
+                    {
+                        if (! g.active)
+                        {
+                            g.startPos  = playbackPosFrac_;
+                            g.phase     = playbackPosFrac_;
+                            g.speed     = static_cast<double> (speed);
+                            g.lifetime  = grainSizeSamples;
+                            g.totalLife = grainSizeSamples;
+                            g.active    = true;
+                            g.reverse   = reverseOn;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // ── Sum active grains ──
+            float mix = 0.0f;
+            for (auto& g : grainPool_)
+            {
+                if (! g.active)
+                    continue;
+
+                // Envelope phase: 0 at start → 1 at end of grain
+                const float envPhase = 1.0f - static_cast<float> (g.lifetime)
+                                              / static_cast<float> (g.totalLife);
+                // Hann window
+                const float window = 0.5f * (1.0f - std::cos (6.283185307f * envPhase));
+
+                // Read sample with linear interpolation
+                const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));
+                const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
+                const float frac = static_cast<float> (g.phase - idx0);
+                const float samp = recordBuffer_[idx0] * (1.0f - frac)
+                                 + recordBuffer_[idx1] * frac;
+
+                mix += samp * window;
+
+                // Advance grain phase
+                g.phase += g.reverse ? -g.speed : g.speed;
+
+                // Decrement lifetime
+                if (--g.lifetime <= 0)
+                    g.active = false;
+            }
+
+            // Write to output with gain compensation
+            mix *= gainComp;
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
-                buffer.getWritePointer (ch)[i] = sample;
+                buffer.getWritePointer (ch)[i] = mix;
 
+            // Advance master playhead
             playbackPosFrac_ += reverseOn
                 ? -static_cast<double> (speed)
                 :  static_cast<double> (speed);
@@ -293,6 +393,9 @@ void WiredMemoryAudioProcessor::stopPlayback()
 {
     playbackActive_.store (false);
     playbackProgress_.store (0.0f);
+    for (auto& g : grainPool_)
+        g.active = false;
+    grainSpawnAccum_ = 0.0;
 }
 
 float WiredMemoryAudioProcessor::getPlaybackProgress() const

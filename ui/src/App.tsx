@@ -846,6 +846,8 @@ export default function App() {
   const speedParam = useJuceSlider("speed");
   const startParam = useJuceSlider("start");
   const lengthParam = useJuceSlider("length");
+  const grainSizeParam = useJuceSlider("grain_size");
+  const densityParam = useJuceSlider("density");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
 
@@ -889,6 +891,15 @@ export default function App() {
   const speedDisplay = (speedActual * 100).toFixed(0);
   const startDisplay = (startParam.value * 100).toFixed(1);
   const lengthDisplay = (lengthParam.value * 100).toFixed(1);
+
+  // Grain Size: JUCE range 0.01–0.5s with skew 0.5
+  // actual = 0.01 + 0.49 * pow(norm, 1/0.5) = 0.01 + 0.49 * norm^2
+  const grainSizeActual = 0.01 + 0.49 * Math.pow(grainSizeParam.value, 2.0);
+  const grainSizeDisplay = (grainSizeActual * 1000).toFixed(0);
+
+  // Density: JUCE range 1–32, integer steps
+  const densityActual = 1 + 31 * densityParam.value;
+  const densityDisplay = Math.round(densityActual).toString();
 
   const captureParam = useJuceToggle("capture");
 
@@ -976,6 +987,8 @@ export default function App() {
       speedParam.set(speedDefaultNorm);
       startParam.set(0);
       lengthParam.set(1);
+      grainSizeParam.set(0.4286);
+      densityParam.set(0);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1008,6 +1021,8 @@ export default function App() {
     speedParam,
     startParam,
     lengthParam,
+    grainSizeParam,
+    densityParam,
     loopParam,
     reverseParam,
     speedDefaultNorm,
@@ -1140,6 +1155,26 @@ export default function App() {
                     color="light"
                     onChange={lengthParam.set}
                     defaultValue={1}
+                  />
+                </div>
+                <div className="wrd-sample-knobs wrd-grain-knobs">
+                  <span className="wrd-grain-label">GRAIN</span>
+                  <Knob
+                    label="SIZE"
+                    normalizedValue={grainSizeParam.value}
+                    displayValue={grainSizeDisplay}
+                    unit="ms"
+                    color="cyan"
+                    onChange={grainSizeParam.set}
+                    defaultValue={0.4286}
+                  />
+                  <Knob
+                    label="DENSITY"
+                    normalizedValue={densityParam.value}
+                    displayValue={densityDisplay}
+                    color="amber"
+                    onChange={densityParam.set}
+                    defaultValue={0}
                   />
                 </div>
                 <div className="wrd-sample-toggles">

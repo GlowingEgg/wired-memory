@@ -29,6 +29,12 @@ private:
     juce::WebSliderRelay lengthRelay { "length" };
     juce::WebSliderParameterAttachment lengthAttachment;
 
+    juce::WebSliderRelay grainSizeRelay  { "grain_size" };
+    juce::WebSliderParameterAttachment grainSizeAttachment;
+
+    juce::WebSliderRelay densityRelay { "density" };
+    juce::WebSliderParameterAttachment densityAttachment;
+
     // Toggle relays for capture and monitor
     juce::WebToggleButtonRelay captureRelay { "capture" };
     juce::WebToggleButtonParameterAttachment captureAttachment;

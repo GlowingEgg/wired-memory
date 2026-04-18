@@ -906,6 +906,23 @@
   font-size: 9px;
 }
 
+.wrd-grain-knobs {
+  align-items: center;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wrd-grain-label {
+  font-family: "Share Tech Mono", monospace;
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(255, 255, 255, 0.35);
+  writing-mode: vertical-lr;
+  text-orientation: mixed;
+  margin-right: -2px;
+}
+
 .wrd-sample-toggles {
   display: flex;
   flex-direction: column;

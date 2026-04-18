@@ -2,9 +2,24 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <cmath>
 #include <memory>
 
 class SCKAudioCapture;
+
+// ── Grain state ──────────────────────────────────────────────────────────────
+struct Grain
+{
+    double startPos   = 0.0;   // start position in record buffer (samples)
+    double speed      = 1.0;   // playback speed (inherited from master)
+    double phase      = 0.0;   // current fractional sample position
+    int    lifetime   = 0;     // remaining samples before deactivation
+    int    totalLife  = 0;     // original lifetime (for envelope calc)
+    bool   active     = false;
+    bool   reverse    = false; // grain plays in reverse
+};
+
+static constexpr int kMaxGrains = 64;
 
 class WiredMemoryAudioProcessor : public juce::AudioProcessor
 {
@@ -78,12 +93,17 @@ private:
     int recordBufferPos_      = 0;
     bool wasCapturing_        = false;
 
-    // -- Sample playback (varispeed) --
+    // -- Sample playback (grain engine) --
     std::atomic<bool>  playbackActive_  { false };
     std::atomic<bool>  playbackPending_ { false };  // message thread signals start
-    double             playbackPosFrac_ = 0.0;      // fractional position (audio thread only)
+    double             playbackPosFrac_ = 0.0;      // master playhead (audio thread only)
     std::atomic<float> playbackProgress_ { 0.0f };  // normalised progress for UI
     std::atomic<int>   sampleLength_    { 0 };       // length of recorded sample in frames
+
+    // -- Grain pool --
+    std::array<Grain, kMaxGrains> grainPool_ {};
+    double grainSpawnAccum_ = 0.0;  // accumulator for grain spawn timing
+    double currentSampleRate_ = 44100.0;
 
     // -- Captured sample snapshot (read by editor timer) --
     juce::SpinLock sampleLock_;
