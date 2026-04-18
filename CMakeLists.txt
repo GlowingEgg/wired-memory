@@ -142,6 +142,7 @@ target_link_libraries(WiredMemory
     PRIVATE
         juce::juce_audio_utils
         juce::juce_gui_extra
+        juce::juce_dsp
         $<$<BOOL:${WEB_UI_DATA_TARGET}>:${WEB_UI_DATA_TARGET}>
     PUBLIC
         juce::juce_recommended_config_flags

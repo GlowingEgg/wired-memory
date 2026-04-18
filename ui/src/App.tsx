@@ -882,6 +882,8 @@ export default function App() {
   const shapeParam = useJuceSlider("shape");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
+  const freezeParam = useJuceToggle("freeze");
+  const driftParam = useJuceSlider("drift");
 
   // Speed knob: non-linear UI curve for higher resolution near center (1x).
   // We map a "curved" 0-1 knob position through a power curve so that
@@ -938,6 +940,9 @@ export default function App() {
 
   // Pitch Scatter: 0–100%
   const pitchScatterDisplay = (pitchScatterParam.value * 100).toFixed(0);
+
+  // Drift: 0–100%
+  const driftDisplay = (driftParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
 
@@ -1030,6 +1035,8 @@ export default function App() {
       scatterParam.set(0);
       pitchScatterParam.set(0);
       shapeParam.set(0);
+      freezeParam.set(false);
+      driftParam.set(0);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1067,6 +1074,8 @@ export default function App() {
     scatterParam,
     pitchScatterParam,
     shapeParam,
+    freezeParam,
+    driftParam,
     loopParam,
     reverseParam,
     speedDefaultNorm,
@@ -1243,6 +1252,27 @@ export default function App() {
                   value={shapeParam.value}
                   onChange={shapeParam.set}
                 />
+                <div className="wrd-sample-knobs wrd-spectral-knobs">
+                  <span className="wrd-grain-label">SPECTRAL</span>
+                  <div
+                    className={`wrd-freeze-btn ${freezeParam.value ? "wrd-freeze-btn--active" : ""}`}
+                    onClick={() => freezeParam.set(!freezeParam.value)}
+                  >
+                    <div className="wrd-freeze-indicator" />
+                    <span className="wrd-freeze-label">FREEZE</span>
+                  </div>
+                  <div className={freezeParam.value ? "" : "wrd-knob-disabled"}>
+                    <Knob
+                      label="DRIFT"
+                      normalizedValue={driftParam.value}
+                      displayValue={driftDisplay}
+                      unit="%"
+                      color="cyan"
+                      onChange={driftParam.set}
+                      defaultValue={0}
+                    />
+                  </div>
+                </div>
                 <div className="wrd-sample-toggles">
                   <Toggle
                     label="LOOP"

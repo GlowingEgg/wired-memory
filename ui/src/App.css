@@ -1036,3 +1036,67 @@
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+/* ── Spectral freeze / drift ──────────────────────────────────────── */
+.wrd-spectral-knobs {
+  align-items: center;
+  margin-left: 2px;
+  padding-left: 8px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.wrd-freeze-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.wrd-freeze-btn:hover {
+  background: rgba(60, 180, 200, 0.08);
+  border-color: rgba(60, 180, 200, 0.15);
+}
+
+.wrd-freeze-btn--active {
+  background: rgba(60, 200, 220, 0.12);
+  border-color: rgba(60, 200, 220, 0.3);
+  box-shadow: 0 0 8px rgba(60, 200, 220, 0.15);
+}
+
+.wrd-freeze-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  transition: all 0.15s ease;
+}
+
+.wrd-freeze-btn--active .wrd-freeze-indicator {
+  background: rgba(60, 200, 220, 0.8);
+  border-color: rgba(60, 200, 220, 0.6);
+  box-shadow: 0 0 6px rgba(60, 200, 220, 0.5);
+}
+
+.wrd-freeze-label {
+  font-family: 'VT323', monospace;
+  font-size: 10px;
+  color: rgba(0, 0, 0, 0.45);
+  letter-spacing: 1px;
+}
+
+.wrd-freeze-btn--active .wrd-freeze-label {
+  color: rgba(40, 160, 180, 0.85);
+}
+
+.wrd-knob-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include <juce_dsp/juce_dsp.h>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -119,6 +120,54 @@ private:
     juce::SpinLock sampleLock_;
     std::array<float, kSampleSnapshotSize> sampleSnapshot_ {};
     bool sampleReady_ = false;
+
+    // -- Spectral freeze / drift (FFT) --
+    static constexpr int kFFTOrder = 11;
+    static constexpr int kFFTSize  = 1 << kFFTOrder;   // 2048
+    static constexpr int kHopSize  = kFFTSize / 4;     // 512 (75% overlap)
+
+    juce::dsp::FFT fft_ { kFFTOrder };
+
+    // Pre-computed Hann analysis/synthesis window (2048 samples)
+    std::array<float, kFFTSize> hannWindow_ {};
+
+    // Circular input buffer: accumulates output samples for FFT analysis
+    std::array<float, kFFTSize> fftInputBuffer_ {};
+    int fftInputWritePos_ = 0;
+
+    // Overlap-add output buffer for resynthesis (2x FFT size for safe overlap)
+    static constexpr int kOLABufferSize = kFFTSize * 2;
+    std::array<float, kOLABufferSize> olaBuffer_ {};
+    int olaReadPos_  = 0;
+    int olaWritePos_ = 0;
+
+    // Current analysis frame: magnitude and phase from most recent FFT
+    std::array<float, kFFTSize> currentMagnitude_ {};
+    std::array<float, kFFTSize> currentPhase_ {};
+
+    // Frozen frame: captured magnitude and running synthesis phase
+    std::array<float, kFFTSize> frozenMagnitude_ {};
+    std::array<float, kFFTSize> frozenPhase_ {};
+
+    // Per-bin drift velocities (smoothly varying random offsets)
+    std::array<float, kFFTSize> driftVelocity_ {};
+
+    // Freeze state
+    bool wasFrozen_ = false;
+    int  freezeHopCounter_ = 0;   // counts samples until next resynthesis hop
+
+    // Drift RNG (separate from scatter RNG to avoid correlation)
+    uint32_t driftRngState_ = 0xDEADBEEF;
+    float nextDriftRandom()
+    {
+        driftRngState_ ^= driftRngState_ << 13;
+        driftRngState_ ^= driftRngState_ >> 17;
+        driftRngState_ ^= driftRngState_ << 5;
+        return static_cast<float> (driftRngState_) / static_cast<float> (0xFFFFFFFFu);
+    }
+
+    // FFT work buffer (needs 2*fftSize for JUCE's performRealOnlyForwardTransform)
+    std::array<float, kFFTSize * 2> fftWorkBuffer_ {};
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (WiredMemoryAudioProcessor)
 };

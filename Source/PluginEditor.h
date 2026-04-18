@@ -57,6 +57,13 @@ private:
     juce::WebToggleButtonRelay reverseRelay { "reverse" };
     juce::WebToggleButtonParameterAttachment reverseAttachment;
 
+    // Spectral freeze / drift
+    juce::WebSliderRelay driftRelay { "drift" };
+    juce::WebSliderParameterAttachment driftAttachment;
+
+    juce::WebToggleButtonRelay freezeRelay { "freeze" };
+    juce::WebToggleButtonParameterAttachment freezeAttachment;
+
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 
     /** Send the available source list to the JS frontend. */
