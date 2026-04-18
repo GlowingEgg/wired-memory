@@ -923,6 +923,63 @@
   margin-right: -2px;
 }
 
+/* ── Shape selector (segmented toggle) ────────────────────────────── */
+.wrd-shape-selector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.wrd-shape-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 6px;
+  color: rgba(0, 0, 0, 0.4);
+  letter-spacing: 0.08em;
+}
+
+.wrd-shape-buttons {
+  display: flex;
+  gap: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.wrd-shape-btn {
+  font-family: 'VT323', monospace;
+  font-size: 12px;
+  padding: 3px 7px;
+  border: none;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.3);
+  color: rgba(0, 0, 0, 0.35);
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  transition: all 0.12s ease;
+}
+
+.wrd-shape-btn:last-child {
+  border-right: none;
+}
+
+.wrd-shape-btn:hover {
+  background: rgba(255, 255, 255, 0.5);
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.wrd-shape-btn--active {
+  background: rgba(40, 140, 170, 0.15);
+  color: rgba(40, 140, 170, 0.9);
+  box-shadow: inset 0 0 6px rgba(40, 140, 170, 0.1);
+}
+
+.wrd-shape-btn--active:hover {
+  background: rgba(40, 140, 170, 0.2);
+  color: rgba(40, 140, 170, 0.95);
+}
+
 .wrd-sample-toggles {
   display: flex;
   flex-direction: column;

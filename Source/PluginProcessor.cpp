@@ -77,6 +77,12 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.0f));
 
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "shape", 1 },
+        "Shape",
+        juce::NormalisableRange<float> (0.0f, 3.0f, 1.0f),
+        0.0f));
+
     return layout;
 }
 
@@ -146,6 +152,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float density      = apvts.getRawParameterValue ("density")->load();
     const float scatter      = apvts.getRawParameterValue ("scatter")->load();
     const float pitchScatter = apvts.getRawParameterValue ("pitch_scatter")->load();
+    const int   shapeType    = static_cast<int> (apvts.getRawParameterValue ("shape")->load());
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -286,8 +293,30 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 // Envelope phase: 0 at start → 1 at end of grain
                 const float envPhase = 1.0f - static_cast<float> (g.lifetime)
                                               / static_cast<float> (g.totalLife);
-                // Hann window
-                const float window = 0.5f * (1.0f - std::cos (6.283185307f * envPhase));
+
+                // Window function selected by shape parameter
+                float window;
+                switch (shapeType)
+                {
+                    default:
+                    case 0: // Hann
+                        window = 0.5f * (1.0f - std::cos (6.283185307f * envPhase));
+                        break;
+                    case 1: // Triangle
+                        window = 1.0f - std::abs (2.0f * envPhase - 1.0f);
+                        break;
+                    case 2: // Trapezoid (15% ramp, 70% hold, 15% ramp)
+                        if (envPhase < 0.15f)
+                            window = envPhase / 0.15f;
+                        else if (envPhase > 0.85f)
+                            window = (1.0f - envPhase) / 0.15f;
+                        else
+                            window = 1.0f;
+                        break;
+                    case 3: // Rectangle
+                        window = 1.0f;
+                        break;
+                }
 
                 // Read sample with linear interpolation
                 const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));

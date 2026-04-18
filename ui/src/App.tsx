@@ -371,6 +371,35 @@ function Toggle({
   );
 }
 
+/* ── Shape selector (segmented toggle) ── */
+const SHAPE_NAMES = ["Hann", "Tri", "Trap", "Rect"] as const;
+
+function ShapeSelector({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (normalized: number) => void;
+}) {
+  const selected = Math.round(value * 3);
+  return (
+    <div className="wrd-shape-selector">
+      <span className="wrd-shape-label">SHAPE</span>
+      <div className="wrd-shape-buttons">
+        {SHAPE_NAMES.map((name, i) => (
+          <button
+            key={name}
+            className={`wrd-shape-btn ${selected === i ? "wrd-shape-btn--active" : ""}`}
+            onClick={() => onChange(i / 3)}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Live waveform visualiser (incoming signal) ── */
 function LiveWaveform({ sourceSelector }: { sourceSelector: React.ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -850,6 +879,7 @@ export default function App() {
   const densityParam = useJuceSlider("density");
   const scatterParam = useJuceSlider("scatter");
   const pitchScatterParam = useJuceSlider("pitch_scatter");
+  const shapeParam = useJuceSlider("shape");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
 
@@ -999,6 +1029,7 @@ export default function App() {
       densityParam.set(0);
       scatterParam.set(0);
       pitchScatterParam.set(0);
+      shapeParam.set(0);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1035,6 +1066,7 @@ export default function App() {
     densityParam,
     scatterParam,
     pitchScatterParam,
+    shapeParam,
     loopParam,
     reverseParam,
     speedDefaultNorm,
@@ -1207,6 +1239,10 @@ export default function App() {
                     defaultValue={0}
                   />
                 </div>
+                <ShapeSelector
+                  value={shapeParam.value}
+                  onChange={shapeParam.set}
+                />
                 <div className="wrd-sample-toggles">
                   <Toggle
                     label="LOOP"
