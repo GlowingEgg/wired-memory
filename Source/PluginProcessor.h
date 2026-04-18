@@ -105,6 +105,16 @@ private:
     double grainSpawnAccum_ = 0.0;  // accumulator for grain spawn timing
     double currentSampleRate_ = 44100.0;
 
+    // -- Scatter RNG (xorshift32, no heap) --
+    uint32_t rngState_ = 0x12345678;
+    float nextRandom()
+    {
+        rngState_ ^= rngState_ << 13;
+        rngState_ ^= rngState_ >> 17;
+        rngState_ ^= rngState_ << 5;
+        return static_cast<float> (rngState_) / static_cast<float> (0xFFFFFFFFu);
+    }
+
     // -- Captured sample snapshot (read by editor timer) --
     juce::SpinLock sampleLock_;
     std::array<float, kSampleSnapshotSize> sampleSnapshot_ {};

@@ -65,6 +65,12 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (1.0f, 32.0f, 1.0f),
         1.0f));
 
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "scatter", 1 },
+        "Scatter",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.0f));
+
     return layout;
 }
 
@@ -132,6 +138,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const bool  reverseOn   = apvts.getRawParameterValue ("reverse")->load() >= 0.5f;
     const float grainSizeSec = apvts.getRawParameterValue ("grain_size")->load();
     const float density      = apvts.getRawParameterValue ("density")->load();
+    const float scatter      = apvts.getRawParameterValue ("scatter")->load();
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -230,8 +237,18 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     {
                         if (! g.active)
                         {
-                            g.startPos  = playbackPosFrac_;
-                            g.phase     = playbackPosFrac_;
+                            // Apply scatter: offset grain start by random amount
+                            double grainStart = playbackPosFrac_;
+                            if (scatter > 0.0f)
+                            {
+                                const float rnd = nextRandom() - 0.5f; // [-0.5, 0.5]
+                                grainStart += static_cast<double> (rnd * scatter) * regionLen;
+                                grainStart = juce::jlimit (static_cast<double> (startFrame),
+                                                           static_cast<double> (endFrame - 1),
+                                                           grainStart);
+                            }
+                            g.startPos  = grainStart;
+                            g.phase     = grainStart;
                             g.speed     = static_cast<double> (speed);
                             g.lifetime  = grainSizeSamples;
                             g.totalLife = grainSizeSamples;

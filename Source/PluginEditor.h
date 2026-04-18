@@ -35,6 +35,9 @@ private:
     juce::WebSliderRelay densityRelay { "density" };
     juce::WebSliderParameterAttachment densityAttachment;
 
+    juce::WebSliderRelay scatterRelay { "scatter" };
+    juce::WebSliderParameterAttachment scatterAttachment;
+
     // Toggle relays for capture and monitor
     juce::WebToggleButtonRelay captureRelay { "capture" };
     juce::WebToggleButtonParameterAttachment captureAttachment;

@@ -848,6 +848,7 @@ export default function App() {
   const lengthParam = useJuceSlider("length");
   const grainSizeParam = useJuceSlider("grain_size");
   const densityParam = useJuceSlider("density");
+  const scatterParam = useJuceSlider("scatter");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
 
@@ -900,6 +901,9 @@ export default function App() {
   // Density: JUCE range 1–32, integer steps
   const densityActual = 1 + 31 * densityParam.value;
   const densityDisplay = Math.round(densityActual).toString();
+
+  // Scatter: 0–100%
+  const scatterDisplay = (scatterParam.value * 100).toFixed(0);
 
   const captureParam = useJuceToggle("capture");
 
@@ -989,6 +993,7 @@ export default function App() {
       lengthParam.set(1);
       grainSizeParam.set(0.4286);
       densityParam.set(0);
+      scatterParam.set(0);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1023,6 +1028,7 @@ export default function App() {
     lengthParam,
     grainSizeParam,
     densityParam,
+    scatterParam,
     loopParam,
     reverseParam,
     speedDefaultNorm,
@@ -1174,6 +1180,15 @@ export default function App() {
                     displayValue={densityDisplay}
                     color="amber"
                     onChange={densityParam.set}
+                    defaultValue={0}
+                  />
+                  <Knob
+                    label="SCATTER"
+                    normalizedValue={scatterParam.value}
+                    displayValue={scatterDisplay}
+                    unit="%"
+                    color="light"
+                    onChange={scatterParam.set}
                     defaultValue={0}
                   />
                 </div>
