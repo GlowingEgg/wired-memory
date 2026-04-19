@@ -67,6 +67,9 @@ private:
     juce::WebToggleButtonRelay freezeRelay { "freeze" };
     juce::WebToggleButtonParameterAttachment freezeAttachment;
 
+    juce::WebToggleButtonRelay speedLockPitchRelay { "speed_lock_pitch" };
+    juce::WebToggleButtonParameterAttachment speedLockPitchAttachment;
+
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 
     /** Send the available source list to the JS frontend. */

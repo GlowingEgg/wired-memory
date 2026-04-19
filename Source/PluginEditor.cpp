@@ -84,11 +84,12 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , driftAttachment   (*p.apvts.getParameter ("drift"),   driftRelay,   nullptr)
       , smearAttachment   (*p.apvts.getParameter ("smear"),   smearRelay,   nullptr)
       , freezeAttachment  (*p.apvts.getParameter ("freeze"),  freezeRelay,  nullptr)
+      , speedLockPitchAttachment (*p.apvts.getParameter ("speed_lock_pitch"), speedLockPitchRelay, nullptr)
 #endif
 {
-    setSize (728, 546);
+    setSize (800, 700);
     setResizable (true, true);
-    setResizeLimits (400, 300, 1200, 900);
+    setResizeLimits (500, 400, 1400, 1000);
     startTimerHz (30);
 }
 
@@ -200,6 +201,7 @@ void WiredMemoryAudioProcessorEditor::resized()
             .withOptionsFrom (driftRelay)
             .withOptionsFrom (smearRelay)
             .withOptionsFrom (freezeRelay)
+            .withOptionsFrom (speedLockPitchRelay)
             // JS → C++: set capture source by bundle ID
             .withNativeFunction ("sck_setSource", [this] (auto& args, auto complete) {
                 auto* cap = audioProcessor.getCapture();

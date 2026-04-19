@@ -73,8 +73,8 @@ WiredMemoryAudioProcessor::createParameterLayout()
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "pitch_scatter", 1 },
-        "Pitch Scatter",
-        juce::NormalisableRange<float> (0.0f, 1.0f),
+        "Pitch",
+        juce::NormalisableRange<float> (-1.0f, 1.0f),
         0.0f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
@@ -99,6 +99,11 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Smear",
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "speed_lock_pitch", 1 },
+        "Speed Lock Pitch",
+        true));
 
     return layout;
 }
@@ -196,6 +201,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const bool  freezeOn     = apvts.getRawParameterValue ("freeze")->load() >= 0.5f;
     const float drift        = apvts.getRawParameterValue ("drift")->load();
     const float smear        = apvts.getRawParameterValue ("smear")->load();
+    const bool  speedLockPitch = apvts.getRawParameterValue ("speed_lock_pitch")->load() >= 0.5f;
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -215,7 +221,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         // Reset grain state for fresh playback
         for (auto& g : grainPool_)
             g.active = false;
-        grainSpawnAccum_ = 0.0;
+        grainSpawnAccum_ = 1e9;
 
         playbackActive_.store (true);
     }
@@ -228,6 +234,62 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         const int regionLen   = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
         const int endFrame    = juce::jmin (startFrame + regionLen, totalLen);
 
+        // Deterministic pitch multiplier
+        const double pitchMul = (std::abs (pitchScatter) > 0.001f)
+                              ? std::exp2 (static_cast<double> (pitchScatter))
+                              : 1.0;
+
+        if (density <= 1.0f)
+        {
+            // ── Direct playback — clean varispeed, no grain engine ──
+            const double effectiveSpeed = static_cast<double> (speed) * pitchMul;
+
+            for (int i = 0; i < numSamples; ++i)
+            {
+                if (reverseOn)
+                {
+                    if (playbackPosFrac_ < static_cast<double> (startFrame))
+                    {
+                        if (loopOn)
+                            playbackPosFrac_ = static_cast<double> (endFrame - 1);
+                        else
+                        {
+                            playbackActive_.store (false);
+                            playbackProgress_.store (0.0f);
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    if (playbackPosFrac_ >= static_cast<double> (endFrame))
+                    {
+                        if (loopOn)
+                            playbackPosFrac_ = static_cast<double> (startFrame);
+                        else
+                        {
+                            playbackActive_.store (false);
+                            playbackProgress_.store (0.0f);
+                            break;
+                        }
+                    }
+                }
+
+                const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (playbackPosFrac_));
+                const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
+                const float frac = static_cast<float> (playbackPosFrac_ - idx0);
+                const float samp = recordBuffer_[idx0] * (1.0f - frac)
+                                 + recordBuffer_[idx1] * frac;
+
+                for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                    buffer.getWritePointer (ch)[i] = samp;
+
+                playbackPosFrac_ += reverseOn ? -effectiveSpeed : effectiveSpeed;
+            }
+        }
+        else
+        {
+        // ── Grain engine ──
         const int grainSizeSamples = juce::jmax (1, static_cast<int> (grainSizeSec * currentSampleRate_));
         const double spawnInterval = static_cast<double> (grainSizeSamples) / static_cast<double> (density);
         const float gainComp = 1.0f / std::sqrt (density);
@@ -307,14 +369,10 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             g.startPos  = grainStart;
                             g.phase     = grainStart;
 
-                            // Per-grain pitch: masterSpeed * 2^(rnd * pitchScatter)
-                            // rnd in [-1, 1] → ±1 octave at pitchScatter=1.0
-                            double grainSpeed = static_cast<double> (speed);
-                            if (pitchScatter > 0.0f)
-                            {
-                                const float rnd = nextRandom() * 2.0f - 1.0f; // [-1, 1]
-                                grainSpeed *= std::exp2 (static_cast<double> (rnd * pitchScatter));
-                            }
+                            // Grain speed: varispeed or pitch-independent
+                            double grainSpeed = speedLockPitch
+                                ? static_cast<double> (speed) : 1.0;
+                            grainSpeed *= pitchMul;
                             g.speed     = grainSpeed;
                             g.lifetime  = grainSizeSamples;
                             g.totalLife = grainSizeSamples;
@@ -388,6 +446,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 ? -static_cast<double> (speed)
                 :  static_cast<double> (speed);
         }
+        } // end grain engine
 
         // Update progress for UI
         if (playbackActive_.load() && regionLen > 0)

@@ -245,6 +245,7 @@ function Knob({
   color = "light",
   onChange,
   defaultValue,
+  bipolar,
 }: {
   label: string;
   normalizedValue: number;
@@ -253,6 +254,7 @@ function Knob({
   color?: "light" | "amber" | "cyan";
   onChange?: (normalized: number) => void;
   defaultValue?: number;
+  bipolar?: boolean;
 }) {
   const dragRef = useRef<{ startY: number; startValue: number } | null>(null);
 
@@ -319,14 +321,33 @@ function Knob({
           strokeWidth="1.5"
           strokeLinecap="round"
         />
-        {sweep > 0.5 && (
-          <path
-            d={`M ${px(startA)} ${py(startA)} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${px(endA)} ${py(endA)}`}
-            fill="none"
-            className={`wrd-arc--${color}`}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-          />
+        {bipolar ? (
+          (() => {
+            const midA = startA + 135;
+            const arcSweep = Math.abs(endA - midA);
+            if (arcSweep < 0.5) return null;
+            const fromA = norm >= 0.5 ? midA : endA;
+            const toA = norm >= 0.5 ? endA : midA;
+            return (
+              <path
+                d={`M ${px(fromA)} ${py(fromA)} A ${r} ${r} 0 ${arcSweep > 180 ? 1 : 0} 1 ${px(toA)} ${py(toA)}`}
+                fill="none"
+                className={`wrd-arc--${color}`}
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            );
+          })()
+        ) : (
+          sweep > 0.5 && (
+            <path
+              d={`M ${px(startA)} ${py(startA)} A ${r} ${r} 0 ${sweep > 180 ? 1 : 0} 1 ${px(endA)} ${py(endA)}`}
+              fill="none"
+              className={`wrd-arc--${color}`}
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          )
         )}
         <circle cx={cx} cy={cy} r="2.5" className={`wrd-dot--${color}`} />
         <line
@@ -914,6 +935,7 @@ export default function App() {
   const freezeParam = useJuceToggle("freeze");
   const driftParam = useJuceSlider("drift");
   const smearParam = useJuceSlider("smear");
+  const speedLockPitchParam = useJuceToggle("speed_lock_pitch");
 
   // Speed knob: non-linear UI curve for higher resolution near center (1x).
   // We map a "curved" 0-1 knob position through a power curve so that
@@ -968,8 +990,10 @@ export default function App() {
   // Scatter: 0–100%
   const scatterDisplay = (scatterParam.value * 100).toFixed(0);
 
-  // Pitch Scatter: 0–100%
-  const pitchScatterDisplay = (pitchScatterParam.value * 100).toFixed(0);
+  // Pitch: bipolar -12 to +12 semitones (normalised 0–1 maps to actual -1 to +1 octaves)
+  const pitchActual = pitchScatterParam.value * 2 - 1;
+  const pitchSemitones = pitchActual * 12;
+  const pitchScatterDisplay = (pitchSemitones >= 0 ? "+" : "") + pitchSemitones.toFixed(0);
 
   // Drift: 0–100%
   const driftDisplay = (driftParam.value * 100).toFixed(0);
@@ -1090,11 +1114,12 @@ export default function App() {
       grainSizeParam.set(0.4286);
       densityParam.set(0);
       scatterParam.set(0);
-      pitchScatterParam.set(0);
+      pitchScatterParam.set(0.5);
       shapeParam.set(0);
       freezeParam.set(false);
       driftParam.set(0);
       smearParam.set(0);
+      speedLockPitchParam.set(true);
       loopParam.set(false);
       reverseParam.set(false);
       setCaptureState("recording");
@@ -1137,6 +1162,7 @@ export default function App() {
     smearParam,
     loopParam,
     reverseParam,
+    speedLockPitchParam,
     speedDefaultNorm,
   ]);
 
@@ -1256,6 +1282,11 @@ export default function App() {
                     onChange={handleSpeedChange}
                     defaultValue={speedDefaultKnob}
                   />
+                  <Toggle
+                    label="VARI"
+                    on={speedLockPitchParam.value}
+                    onClick={() => speedLockPitchParam.set(!speedLockPitchParam.value)}
+                  />
                   <Knob
                     label="START"
                     normalizedValue={startParam.value}
@@ -1307,10 +1338,11 @@ export default function App() {
                     label="PITCH"
                     normalizedValue={pitchScatterParam.value}
                     displayValue={pitchScatterDisplay}
-                    unit="%"
+                    unit="st"
                     color="cyan"
                     onChange={pitchScatterParam.set}
-                    defaultValue={0}
+                    defaultValue={0.5}
+                    bipolar
                   />
                 </div>
                 <ShapeSelector
