@@ -1105,3 +1105,45 @@
   opacity: 0.35;
   pointer-events: none;
 }
+
+/* ── Note picker (MIDI root note) ─────────────────────────────────── */
+.wrd-note-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 56px;
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.wrd-note-picker-box {
+  font-family: 'VT323', monospace;
+  font-size: 18px;
+  color: rgba(40, 140, 170, 0.9);
+  letter-spacing: 0.05em;
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 2px;
+  padding: 4px 10px;
+  min-width: 38px;
+  text-align: center;
+  line-height: 1;
+}
+
+.wrd-note-picker .wrd-knob-label {
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  color: rgba(0, 0, 0, 0.4);
+  letter-spacing: 0.08em;
+}
+
+/* ── SYNTH panel (MIDI 1/4 scaffold) ──────────────────────────────── */
+.wrd-synth-panel {
+  margin-top: 4px;
+}
+
+.wrd-synth-panel .wrd-sample-controls {
+  border-top: none;
+}

@@ -70,6 +70,34 @@ private:
     juce::WebToggleButtonRelay speedLockPitchRelay { "speed_lock_pitch" };
     juce::WebToggleButtonParameterAttachment speedLockPitchAttachment;
 
+    // Hybrid sampler/synth mode (MIDI 1/4)
+    juce::WebToggleButtonRelay synthModeRelay { "synth_mode" };
+    juce::WebToggleButtonParameterAttachment synthModeAttachment;
+
+    juce::WebToggleButtonRelay triggerModeRelay { "trigger_mode" };
+    juce::WebToggleButtonParameterAttachment triggerModeAttachment;
+
+    juce::WebSliderRelay rootNoteRelay { "root_note" };
+    juce::WebSliderParameterAttachment rootNoteAttachment;
+
+    juce::WebSliderRelay densityTrackRelay { "density_track" };
+    juce::WebSliderParameterAttachment densityTrackAttachment;
+
+    juce::WebSliderRelay velocitySensRelay { "velocity_sens" };
+    juce::WebSliderParameterAttachment velocitySensAttachment;
+
+    juce::WebSliderRelay ampAttackRelay { "amp_attack" };
+    juce::WebSliderParameterAttachment ampAttackAttachment;
+
+    juce::WebSliderRelay ampReleaseRelay { "amp_release" };
+    juce::WebSliderParameterAttachment ampReleaseAttachment;
+
+    juce::WebSliderRelay glideRelay { "glide" };
+    juce::WebSliderParameterAttachment glideAttachment;
+
+    juce::WebSliderRelay fineTuneRelay { "fine_tune" };
+    juce::WebSliderParameterAttachment fineTuneAttachment;
+
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 
     /** Send the available source list to the JS frontend. */

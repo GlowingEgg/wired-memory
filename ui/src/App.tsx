@@ -374,21 +374,97 @@ function Toggle({
   label,
   on,
   onClick,
+  disabled,
 }: {
   label: string;
   on: boolean;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   return (
     <div
-      className="wrd-toggle"
-      onClick={onClick}
-      style={onClick ? { cursor: "pointer" } : undefined}
+      className={`wrd-toggle ${disabled ? "wrd-toggle-disabled" : ""}`}
+      onClick={disabled ? undefined : onClick}
+      style={
+        disabled
+          ? { opacity: 0.3, pointerEvents: "none" }
+          : onClick
+            ? { cursor: "pointer" }
+            : undefined
+      }
     >
       <div className={`wrd-toggle-track ${on ? "wrd-toggle--on" : ""}`}>
         <div className="wrd-toggle-thumb" />
       </div>
       <div className="wrd-toggle-label">{label}</div>
+    </div>
+  );
+}
+
+/* ── Note picker (drag to change MIDI note) ── */
+const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"] as const;
+
+function midiNoteName(note: number): string {
+  const n = Math.max(0, Math.min(127, Math.round(note)));
+  const name = NOTE_NAMES[n % 12];
+  const octave = Math.floor(n / 12) - 1;
+  return `${name}${octave}`;
+}
+
+function NotePicker({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (normalized: number) => void;
+}) {
+  const dragRef = useRef<{ startY: number; startNote: number } | null>(null);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+      dragRef.current = { startY: e.clientY, startNote: value };
+      document.body.style.userSelect = "none";
+      document.body.style.webkitUserSelect = "none";
+    },
+    [value],
+  );
+
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (!dragRef.current) return;
+      const delta = (dragRef.current.startY - e.clientY) / 6;
+      const newNote = Math.max(
+        0,
+        Math.min(127, Math.round(dragRef.current.startNote + delta)),
+      );
+      onChange(newNote / 127);
+    },
+    [onChange],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    dragRef.current = null;
+    document.body.style.userSelect = "";
+    document.body.style.webkitUserSelect = "";
+  }, []);
+
+  const handleDoubleClick = useCallback(() => {
+    onChange(60 / 127);
+  }, [onChange]);
+
+  return (
+    <div
+      className="wrd-note-picker"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onDoubleClick={handleDoubleClick}
+    >
+      <div className="wrd-note-picker-box">{midiNoteName(value)}</div>
+      <div className="wrd-knob-label">{label}</div>
     </div>
   );
 }
@@ -937,6 +1013,17 @@ export default function App() {
   const smearParam = useJuceSlider("smear");
   const speedLockPitchParam = useJuceToggle("speed_lock_pitch");
 
+  // Hybrid sampler/synth mode (MIDI 1/4)
+  const synthModeParam = useJuceToggle("synth_mode");
+  const triggerModeParam = useJuceToggle("trigger_mode");
+  const rootNoteParam = useJuceSlider("root_note");
+  const densityTrackParam = useJuceSlider("density_track");
+  const velocitySensParam = useJuceSlider("velocity_sens");
+  const ampAttackParam = useJuceSlider("amp_attack");
+  const ampReleaseParam = useJuceSlider("amp_release");
+  const glideParam = useJuceSlider("glide");
+  const fineTuneParam = useJuceSlider("fine_tune");
+
   // Speed knob: non-linear UI curve for higher resolution near center (1x).
   // We map a "curved" 0-1 knob position through a power curve so that
   // movement near 12 o'clock (center) produces smaller parameter changes.
@@ -1000,6 +1087,24 @@ export default function App() {
 
   // Smear: 0–100%
   const smearDisplay = (smearParam.value * 100).toFixed(0);
+
+  // Synth params (MIDI 1/4)
+  const rootNoteValue = Math.round(rootNoteParam.value * 127);
+  const densityTrackDisplay = (densityTrackParam.value * 100).toFixed(0);
+  const velocitySensDisplay = (velocitySensParam.value * 100).toFixed(0);
+  // amp_attack: 0.001–2.0s, skew 0.5 → actual = 0.001 + 1.999 * norm^2
+  const ampAttackActual = 0.001 + 1.999 * Math.pow(ampAttackParam.value, 2.0);
+  const ampAttackDisplay = (ampAttackActual * 1000).toFixed(0);
+  // amp_release: 0.001–5.0s, skew 0.5 → actual = 0.001 + 4.999 * norm^2
+  const ampReleaseActual = 0.001 + 4.999 * Math.pow(ampReleaseParam.value, 2.0);
+  const ampReleaseDisplay = (ampReleaseActual * 1000).toFixed(0);
+  const glideDisplay = (glideParam.value * 100).toFixed(0);
+  // fine_tune: -100 to +100 cents (norm 0..1)
+  const fineTuneCents = -100 + 200 * fineTuneParam.value;
+  const fineTuneDisplay =
+    (fineTuneCents >= 0 ? "+" : "") + fineTuneCents.toFixed(0);
+
+  const synthOn = synthModeParam.value;
 
   const captureParam = useJuceToggle("capture");
 
@@ -1268,7 +1373,12 @@ export default function App() {
                 <button
                   className={`wrd-play-btn ${playing ? "wrd-play-btn--active" : ""}`}
                   onClick={handlePlayStop}
-                  disabled={captureState !== "done"}
+                  disabled={captureState !== "done" || synthOn}
+                  style={
+                    synthOn
+                      ? { opacity: 0.35, pointerEvents: "none" }
+                      : undefined
+                  }
                 >
                   {playing ? "⏹" : "▶"}
                 </button>
@@ -1334,16 +1444,18 @@ export default function App() {
                     onChange={scatterParam.set}
                     defaultValue={0}
                   />
-                  <Knob
-                    label="PITCH"
-                    normalizedValue={pitchScatterParam.value}
-                    displayValue={pitchScatterDisplay}
-                    unit="st"
-                    color="cyan"
-                    onChange={pitchScatterParam.set}
-                    defaultValue={0.5}
-                    bipolar
-                  />
+                  <div className={synthOn ? "wrd-knob-disabled" : undefined}>
+                    <Knob
+                      label="PITCH"
+                      normalizedValue={pitchScatterParam.value}
+                      displayValue={pitchScatterDisplay}
+                      unit="st"
+                      color="cyan"
+                      onChange={pitchScatterParam.set}
+                      defaultValue={0.5}
+                      bipolar
+                    />
+                  </div>
                 </div>
                 <ShapeSelector
                   value={shapeParam.value}
@@ -1388,9 +1500,89 @@ export default function App() {
                     on={reverseParam.value}
                     onClick={() => reverseParam.set(!reverseParam.value)}
                   />
+                  <Toggle
+                    label="GATE"
+                    on={triggerModeParam.value}
+                    onClick={() => triggerModeParam.set(!triggerModeParam.value)}
+                    disabled={synthOn}
+                  />
                 </div>
               </div>
             </SampleWaveform>
+
+            {/* SYNTH panel — MIDI hybrid mode (1/4 scaffold; DSP unwired) */}
+            <div className="wrd-glass wrd-monitor-sample wrd-synth-panel">
+              <div className="wrd-sample-controls">
+                <span className="wrd-grain-label">SYNTH</span>
+                <Toggle
+                  label="SYNTH"
+                  on={synthModeParam.value}
+                  onClick={() => synthModeParam.set(!synthModeParam.value)}
+                />
+                <NotePicker
+                  label="ROOT"
+                  value={rootNoteValue}
+                  onChange={rootNoteParam.set}
+                />
+                <div className={`wrd-sample-knobs ${!synthOn ? "wrd-knob-disabled" : ""}`}>
+                  <Knob
+                    label="TRACK"
+                    normalizedValue={densityTrackParam.value}
+                    displayValue={densityTrackDisplay}
+                    unit="%"
+                    color="cyan"
+                    onChange={densityTrackParam.set}
+                    defaultValue={0}
+                  />
+                  <Knob
+                    label="VEL"
+                    normalizedValue={velocitySensParam.value}
+                    displayValue={velocitySensDisplay}
+                    unit="%"
+                    color="amber"
+                    onChange={velocitySensParam.set}
+                    defaultValue={0.7}
+                  />
+                  <Knob
+                    label="ATK"
+                    normalizedValue={ampAttackParam.value}
+                    displayValue={ampAttackDisplay}
+                    unit="ms"
+                    color="light"
+                    onChange={ampAttackParam.set}
+                    defaultValue={Math.sqrt((0.005 - 0.001) / 1.999)}
+                  />
+                  <Knob
+                    label="REL"
+                    normalizedValue={ampReleaseParam.value}
+                    displayValue={ampReleaseDisplay}
+                    unit="ms"
+                    color="light"
+                    onChange={ampReleaseParam.set}
+                    defaultValue={Math.sqrt((0.15 - 0.001) / 4.999)}
+                  />
+                  <Knob
+                    label="GLIDE"
+                    normalizedValue={glideParam.value}
+                    displayValue={glideDisplay}
+                    unit="%"
+                    color="cyan"
+                    onChange={glideParam.set}
+                    defaultValue={0}
+                  />
+                  <Knob
+                    label="FINE"
+                    normalizedValue={fineTuneParam.value}
+                    displayValue={fineTuneDisplay}
+                    unit="ct"
+                    color="amber"
+                    onChange={fineTuneParam.set}
+                    defaultValue={0.5}
+                    bipolar
+                  />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

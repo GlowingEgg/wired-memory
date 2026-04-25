@@ -85,6 +85,15 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , smearAttachment   (*p.apvts.getParameter ("smear"),   smearRelay,   nullptr)
       , freezeAttachment  (*p.apvts.getParameter ("freeze"),  freezeRelay,  nullptr)
       , speedLockPitchAttachment (*p.apvts.getParameter ("speed_lock_pitch"), speedLockPitchRelay, nullptr)
+      , synthModeAttachment    (*p.apvts.getParameter ("synth_mode"),    synthModeRelay,    nullptr)
+      , triggerModeAttachment  (*p.apvts.getParameter ("trigger_mode"),  triggerModeRelay,  nullptr)
+      , rootNoteAttachment     (*p.apvts.getParameter ("root_note"),     rootNoteRelay,     nullptr)
+      , densityTrackAttachment (*p.apvts.getParameter ("density_track"), densityTrackRelay, nullptr)
+      , velocitySensAttachment (*p.apvts.getParameter ("velocity_sens"), velocitySensRelay, nullptr)
+      , ampAttackAttachment    (*p.apvts.getParameter ("amp_attack"),    ampAttackRelay,    nullptr)
+      , ampReleaseAttachment   (*p.apvts.getParameter ("amp_release"),   ampReleaseRelay,   nullptr)
+      , glideAttachment        (*p.apvts.getParameter ("glide"),         glideRelay,        nullptr)
+      , fineTuneAttachment     (*p.apvts.getParameter ("fine_tune"),     fineTuneRelay,     nullptr)
 #endif
 {
     setSize (800, 700);
@@ -202,6 +211,15 @@ void WiredMemoryAudioProcessorEditor::resized()
             .withOptionsFrom (smearRelay)
             .withOptionsFrom (freezeRelay)
             .withOptionsFrom (speedLockPitchRelay)
+            .withOptionsFrom (synthModeRelay)
+            .withOptionsFrom (triggerModeRelay)
+            .withOptionsFrom (rootNoteRelay)
+            .withOptionsFrom (densityTrackRelay)
+            .withOptionsFrom (velocitySensRelay)
+            .withOptionsFrom (ampAttackRelay)
+            .withOptionsFrom (ampReleaseRelay)
+            .withOptionsFrom (glideRelay)
+            .withOptionsFrom (fineTuneRelay)
             // JS → C++: set capture source by bundle ID
             .withNativeFunction ("sck_setSource", [this] (auto& args, auto complete) {
                 auto* cap = audioProcessor.getCapture();

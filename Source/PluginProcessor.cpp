@@ -105,6 +105,59 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Speed Lock Pitch",
         true));
 
+    // ── Hybrid sampler/synth mode (MIDI 1/4) ─────────────────────────────
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "synth_mode", 1 },
+        "Synth Mode",
+        false));
+
+    layout.add (std::make_unique<juce::AudioParameterBool> (
+        juce::ParameterID { "trigger_mode", 1 },
+        "Trigger Mode",
+        false));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "root_note", 1 },
+        "Root Note",
+        juce::NormalisableRange<float> (0.0f, 127.0f, 1.0f),
+        60.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "density_track", 1 },
+        "Density Track",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "velocity_sens", 1 },
+        "Velocity Sensitivity",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.7f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "amp_attack", 1 },
+        "Amp Attack",
+        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.5f),
+        0.005f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "amp_release", 1 },
+        "Amp Release",
+        juce::NormalisableRange<float> (0.001f, 5.0f, 0.0f, 0.5f),
+        0.15f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "glide", 1 },
+        "Glide",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "fine_tune", 1 },
+        "Fine Tune",
+        juce::NormalisableRange<float> (-100.0f, 100.0f),
+        0.0f));
+
     return layout;
 }
 
