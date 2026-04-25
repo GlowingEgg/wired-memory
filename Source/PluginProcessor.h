@@ -18,9 +18,30 @@ struct Grain
     int    totalLife  = 0;     // original lifetime (for envelope calc)
     bool   active     = false;
     bool   reverse    = false; // grain plays in reverse
+    int    voiceIndex = -1;    // owning voice in synth mode (-1 = sampler)
 };
 
 static constexpr int kMaxGrains = 64;
+static constexpr int kNumVoices = 6;
+
+// ── Polyphonic voice state (synth mode) ──────────────────────────────────────
+enum class EnvState { Idle, Attack, Sustain, Release };
+
+struct Voice
+{
+    int      midiNote          = -1;     // -1 = idle slot
+    double   pitchMul          = 1.0;    // target pitch multiplier
+    double   currentPitchMul   = 1.0;    // current pitch (for glide)
+    double   playbackPos       = 0.0;    // independent playhead in record buffer
+    double   grainSpawnAccum   = 0.0;
+    float    velocityGain      = 1.0f;
+    float    effectiveDensity  = 1.0f;
+    float    effectiveGrainSize = 0.1f;  // seconds
+    EnvState envState          = EnvState::Idle;
+    float    envLevel          = 0.0f;
+    bool     sustainHeld       = false;  // for sustain pedal logic (Ticket 4)
+    uint64_t allocOrder        = 0;      // for voice-stealing oldest-first
+};
 
 class WiredMemoryAudioProcessor : public juce::AudioProcessor
 {
@@ -125,6 +146,11 @@ private:
     std::array<Grain, kMaxGrains> grainPool_ {};
     double grainSpawnAccum_ = 0.0;  // accumulator for grain spawn timing
     double currentSampleRate_ = 44100.0;
+
+    // -- Polyphonic voices (synth mode) --
+    std::array<Voice, kNumVoices> voices_ {};
+    uint64_t voiceAllocCounter_ = 0;
+    bool wasSynthMode_ = false;
 
     // -- Grain snapshot for UI --
     juce::SpinLock grainSnapshotLock_;

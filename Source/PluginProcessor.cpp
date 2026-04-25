@@ -223,6 +223,12 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     releaseFadeActive_           = false;
     releaseFadeSamplesRemaining_ = 0;
     releaseFadeTotal_            = 0;
+
+    // Reset polyphonic voices
+    for (auto& v : voices_)
+        v = Voice {};
+    voiceAllocCounter_ = 0;
+    wasSynthMode_ = false;
 }
 void WiredMemoryAudioProcessor::releaseResources() {}
 
@@ -262,11 +268,36 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const bool  speedLockPitch = apvts.getRawParameterValue ("speed_lock_pitch")->load() >= 0.5f;
     const bool  synthMode    = apvts.getRawParameterValue ("synth_mode")->load() >= 0.5f;
     const bool  gateMode     = apvts.getRawParameterValue ("trigger_mode")->load() >= 0.5f;
+    const float rootNote     = apvts.getRawParameterValue ("root_note")->load();
+    const float densityTrack = apvts.getRawParameterValue ("density_track")->load();
+    const float velocitySens = apvts.getRawParameterValue ("velocity_sens")->load();
+    const float ampAttack    = apvts.getRawParameterValue ("amp_attack")->load();
+    const float ampRelease   = apvts.getRawParameterValue ("amp_release")->load();
+    const float glide        = apvts.getRawParameterValue ("glide")->load();
+    const float fineTune     = apvts.getRawParameterValue ("fine_tune")->load();
 
-    // ── MIDI handling for sampler mode (block-quantised) ───────────────────
-    // Synth mode is handled in a later ticket; skip this logic when active.
+    // ── Mode-switch detection: reset both engines on transition ───────────
+    if (synthMode != wasSynthMode_)
+    {
+        playbackActive_.store (false);
+        playbackPending_.store (false);
+        playbackProgress_.store (0.0f);
+        for (auto& g : grainPool_)
+            g.active = false;
+        grainSpawnAccum_ = 0.0;
+        for (auto& v : voices_)
+            v = Voice {};
+        voiceAllocCounter_ = 0;
+        triggeringNote_              = -1;
+        releaseFadeActive_           = false;
+        releaseFadeSamplesRemaining_ = 0;
+        wasSynthMode_ = synthMode;
+    }
+
+    // ── MIDI handling (block-quantised) ────────────────────────────────────
     if (! synthMode)
     {
+        // Sampler-mode MIDI (Ticket 2)
         for (const auto meta : midiMessages)
         {
             const auto msg = meta.getMessage();
@@ -302,10 +333,119 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             }
         }
     }
+    else
+    {
+        // Synth-mode MIDI: voice allocation + envelope state changes
+        const int totalLen   = sampleLength_.load();
+        const int startFrame = static_cast<int> (startNorm * totalLen);
+        const int regionLen  = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
+        const int endFrame   = juce::jmin (startFrame + regionLen, totalLen);
+
+        for (const auto meta : midiMessages)
+        {
+            const auto msg = meta.getMessage();
+
+            if (msg.isNoteOn() && totalLen > 0)
+            {
+                const int   note     = msg.getNoteNumber();
+                const float velocity = msg.getFloatVelocity();
+
+                // Allocate voice: prefer idle, then oldest Release, else oldest of any
+                int alloc = -1;
+                for (int v = 0; v < kNumVoices; ++v)
+                    if (voices_[v].envState == EnvState::Idle) { alloc = v; break; }
+
+                if (alloc < 0)
+                {
+                    uint64_t oldest = UINT64_MAX;
+                    for (int v = 0; v < kNumVoices; ++v)
+                        if (voices_[v].envState == EnvState::Release
+                            && voices_[v].allocOrder < oldest)
+                        {
+                            oldest = voices_[v].allocOrder;
+                            alloc = v;
+                        }
+                }
+                if (alloc < 0)
+                {
+                    uint64_t oldest = UINT64_MAX;
+                    for (int v = 0; v < kNumVoices; ++v)
+                        if (voices_[v].allocOrder < oldest)
+                        {
+                            oldest = voices_[v].allocOrder;
+                            alloc = v;
+                        }
+                }
+                if (alloc < 0) continue;
+
+                auto& voice = voices_[alloc];
+                const bool wasIdle = (voice.envState == EnvState::Idle);
+
+                voice.pitchMul = std::exp2 ((static_cast<double> (note - rootNote)) / 12.0
+                                            + static_cast<double> (fineTune) / 1200.0);
+
+                if (glide <= 0.0f || wasIdle)
+                    voice.currentPitchMul = voice.pitchMul;
+                // else: keep currentPitchMul, glide ramps it in the sample loop
+
+                // Density tracking (auto-shrink grain if density would exceed 32)
+                const double targetFreq = 440.0 * std::exp2 ((note - 69.0) / 12.0);
+                const double freqGrainProduct = targetFreq * static_cast<double> (grainSizeSec);
+                const double targetDensity = juce::jlimit (1.0, 32.0, freqGrainProduct);
+                voice.effectiveDensity = (1.0f - densityTrack) * density
+                                       + densityTrack * static_cast<float> (targetDensity);
+                voice.effectiveDensity = juce::jlimit (1.0f, 32.0f, voice.effectiveDensity);
+
+                if (freqGrainProduct > 32.0)
+                    voice.effectiveGrainSize = static_cast<float> (
+                        std::min (static_cast<double> (grainSizeSec), 32.0 / targetFreq));
+                else
+                    voice.effectiveGrainSize = grainSizeSec;
+
+                voice.velocityGain = (1.0f - velocitySens) + velocitySens * velocity;
+
+                voice.playbackPos = reverseOn
+                    ? static_cast<double> (endFrame - 1)
+                    : static_cast<double> (startFrame);
+                voice.grainSpawnAccum = 1e9; // spawn first grain immediately
+
+                // Clear any stale grains owned by this voice slot
+                for (auto& g : grainPool_)
+                    if (g.voiceIndex == alloc)
+                        g.active = false;
+
+                voice.envState   = EnvState::Attack;
+                voice.envLevel   = 0.0f;
+                voice.midiNote   = note;
+                voice.allocOrder = ++voiceAllocCounter_;
+                voice.sustainHeld = false;
+            }
+            else if (msg.isNoteOff())
+            {
+                const int note = msg.getNoteNumber();
+                for (auto& voice : voices_)
+                {
+                    if (voice.midiNote == note && voice.envState != EnvState::Idle)
+                    {
+                        // Sustain pedal logic deferred to Ticket 4
+                        voice.envState = EnvState::Release;
+                    }
+                }
+            }
+            else if (msg.isAllNotesOff())
+            {
+                for (auto& voice : voices_)
+                    if (voice.envState != EnvState::Idle)
+                        voice.envState = EnvState::Release;
+            }
+        }
+    }
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
 
+    if (! synthMode)
+    {
     // ── Handle pending playback start (set by message thread) ───────────
     if (playbackPending_.exchange (false))
     {
@@ -574,6 +714,236 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             grainSnapshotReady_ = true;
         }
     }
+    } // end sampler-mode engine
+    else if (recordBuffer_ && ! captureOn && sampleLength_.load() > 0)
+    {
+        // ── Synth-mode 6-voice polyphonic granular engine ────────────────
+        const int totalLen   = sampleLength_.load();
+        const int startFrame = static_cast<int> (startNorm * totalLen);
+        const int regionLen  = juce::jmax (1, static_cast<int> (lenNorm * totalLen));
+        const int endFrame   = juce::jmin (startFrame + regionLen, totalLen);
+
+        // Pre-compute envelope/glide coefficients (per-block constants)
+        const float attackInc   = 1.0f / juce::jmax (1.0f, ampAttack  * static_cast<float> (currentSampleRate_));
+        const float releaseDec  = std::exp (-1.0f / juce::jmax (1.0f, ampRelease * static_cast<float> (currentSampleRate_)));
+        const float glideAlpha  = (glide > 0.0f)
+            ? 1.0f - std::exp (-1.0f / juce::jmax (1.0f, glide * static_cast<float> (currentSampleRate_)))
+            : 1.0f;
+
+        // Per-voice spawn intervals & grain sizes (samples)
+        std::array<int, kNumVoices>    voiceGrainSizeSamples {};
+        std::array<double, kNumVoices> voiceSpawnInterval    {};
+        for (int v = 0; v < kNumVoices; ++v)
+        {
+            voiceGrainSizeSamples[v] = juce::jmax (1, static_cast<int> (
+                voices_[v].effectiveGrainSize * currentSampleRate_));
+            voiceSpawnInterval[v] = static_cast<double> (voiceGrainSizeSamples[v])
+                                  / static_cast<double> (juce::jmax (1.0f, voices_[v].effectiveDensity));
+        }
+
+        const double speedAbs = static_cast<double> (speed);
+        const float twoPi = juce::MathConstants<float>::twoPi;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            // ── Per-voice update: glide, envelope, playhead, spawn ──
+            for (int v = 0; v < kNumVoices; ++v)
+            {
+                auto& voice = voices_[v];
+                if (voice.envState == EnvState::Idle)
+                    continue;
+
+                // Glide
+                if (glide > 0.0f)
+                    voice.currentPitchMul += (voice.pitchMul - voice.currentPitchMul) * glideAlpha;
+                else
+                    voice.currentPitchMul = voice.pitchMul;
+
+                // Envelope
+                switch (voice.envState)
+                {
+                    case EnvState::Attack:
+                        voice.envLevel += (1.0f - voice.envLevel) * attackInc;
+                        if (voice.envLevel >= 0.999f)
+                        {
+                            voice.envLevel = 1.0f;
+                            voice.envState = EnvState::Sustain;
+                        }
+                        break;
+                    case EnvState::Sustain:
+                        voice.envLevel = 1.0f;
+                        break;
+                    case EnvState::Release:
+                        voice.envLevel *= releaseDec;
+                        if (voice.envLevel < 0.001f)
+                        {
+                            voice.envLevel = 0.0f;
+                            voice.envState = EnvState::Idle;
+                            voice.midiNote = -1;
+                            for (auto& g : grainPool_)
+                                if (g.voiceIndex == v)
+                                    g.active = false;
+                        }
+                        break;
+                    case EnvState::Idle:
+                    default: break;
+                }
+
+                if (voice.envState == EnvState::Idle)
+                    continue;
+
+                // Playhead bounds
+                if (reverseOn)
+                {
+                    if (voice.playbackPos < static_cast<double> (startFrame))
+                    {
+                        if (loopOn) voice.playbackPos = static_cast<double> (endFrame - 1);
+                    }
+                    if (voice.playbackPos >= static_cast<double> (endFrame))
+                        voice.playbackPos = static_cast<double> (endFrame - 1);
+                }
+                else
+                {
+                    if (voice.playbackPos >= static_cast<double> (endFrame))
+                    {
+                        if (loopOn) voice.playbackPos = static_cast<double> (startFrame);
+                    }
+                    if (voice.playbackPos < static_cast<double> (startFrame))
+                        voice.playbackPos = static_cast<double> (startFrame);
+                }
+
+                const bool inRange = reverseOn
+                    ? (voice.playbackPos >= static_cast<double> (startFrame))
+                    : (voice.playbackPos <  static_cast<double> (endFrame));
+
+                // Spawn grains for this voice
+                if (inRange)
+                {
+                    voice.grainSpawnAccum += 1.0;
+                    while (voice.grainSpawnAccum >= voiceSpawnInterval[v])
+                    {
+                        voice.grainSpawnAccum -= voiceSpawnInterval[v];
+
+                        // Find inactive slot, else steal oldest grain owned by this voice
+                        Grain* slot = nullptr;
+                        for (auto& g : grainPool_)
+                        {
+                            if (! g.active) { slot = &g; break; }
+                        }
+                        if (slot == nullptr)
+                        {
+                            int oldest = INT_MAX;
+                            for (auto& g : grainPool_)
+                            {
+                                if (g.voiceIndex == v && g.lifetime < oldest)
+                                {
+                                    oldest = g.lifetime;
+                                    slot = &g;
+                                }
+                            }
+                        }
+                        if (slot == nullptr)
+                            break; // pool full, no stealable slot for this voice
+
+                        double grainStart = voice.playbackPos;
+                        if (scatter > 0.0f)
+                        {
+                            const float rnd = nextRandom() - 0.5f;
+                            grainStart += static_cast<double> (rnd * scatter) * regionLen;
+                            grainStart = juce::jlimit (static_cast<double> (startFrame),
+                                                       static_cast<double> (endFrame - 1),
+                                                       grainStart);
+                        }
+                        slot->startPos = grainStart;
+                        slot->phase    = grainStart;
+
+                        double grainSpeed = speedLockPitch ? speedAbs : 1.0;
+                        grainSpeed *= voice.currentPitchMul;
+                        if (std::abs (pitchScatter) > 0.001f)
+                            grainSpeed *= std::exp2 (static_cast<double> (pitchScatter));
+                        slot->speed      = grainSpeed;
+                        slot->lifetime   = voiceGrainSizeSamples[v];
+                        slot->totalLife  = voiceGrainSizeSamples[v];
+                        slot->active     = true;
+                        slot->reverse    = reverseOn;
+                        slot->voiceIndex = v;
+                    }
+                }
+
+                voice.playbackPos += reverseOn ? -speedAbs : speedAbs;
+            }
+
+            // ── Sum active grains, scaled by owning voice's env*velocity ──
+            float mix = 0.0f;
+            for (auto& g : grainPool_)
+            {
+                if (! g.active)
+                    continue;
+
+                const float envPhase = 1.0f - static_cast<float> (g.lifetime)
+                                              / static_cast<float> (g.totalLife);
+                float window;
+                switch (shapeType)
+                {
+                    default:
+                    case 0:
+                        window = 0.5f * (1.0f - std::cos (twoPi * envPhase));
+                        break;
+                    case 1:
+                        window = 1.0f - std::abs (2.0f * envPhase - 1.0f);
+                        break;
+                    case 2:
+                        if (envPhase < 0.15f)        window = envPhase / 0.15f;
+                        else if (envPhase > 0.85f)   window = (1.0f - envPhase) / 0.15f;
+                        else                         window = 1.0f;
+                        break;
+                    case 3:
+                        window = 1.0f;
+                        break;
+                }
+
+                const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));
+                const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
+                const float frac = static_cast<float> (g.phase - idx0);
+                const float samp = recordBuffer_[idx0] * (1.0f - frac)
+                                 + recordBuffer_[idx1] * frac;
+
+                float voiceGain = 1.0f;
+                if (g.voiceIndex >= 0 && g.voiceIndex < kNumVoices)
+                {
+                    const auto& vref = voices_[g.voiceIndex];
+                    const float dens = juce::jmax (1.0f, vref.effectiveDensity);
+                    voiceGain = vref.envLevel * vref.velocityGain / std::sqrt (dens);
+                }
+
+                mix += samp * window * voiceGain;
+
+                g.phase += g.reverse ? -g.speed : g.speed;
+                if (--g.lifetime <= 0)
+                    g.active = false;
+            }
+
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                buffer.getWritePointer (ch)[i] = mix;
+        }
+
+        // Grain snapshot for UI
+        {
+            const juce::SpinLock::ScopedLockType lock (grainSnapshotLock_);
+            int count = 0;
+            for (int gi = 0; gi < kMaxGrains && count < kMaxGrains; ++gi)
+            {
+                if (grainPool_[gi].active)
+                {
+                    grainSnapshot_[count].position = static_cast<float> (grainPool_[gi].phase / totalLen);
+                    grainSnapshot_[count].active   = true;
+                    ++count;
+                }
+            }
+            grainSnapshotCount_ = count;
+            grainSnapshotReady_ = true;
+        }
+    }
 
     // ── Spectral freeze / drift + smear crossfade ────────────────────────
     // Dual-path architecture:
@@ -694,8 +1064,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         wasFrozen_ = freezeOn;
     }
 
-    // ── Release fade (applied to final output, after smear crossfade) ──────
-    if (releaseFadeActive_)
+    // ── Release fade (sampler mode only — synth uses voice envelopes) ─────
+    if (! synthMode && releaseFadeActive_)
     {
         const int numCh = buffer.getNumChannels();
 
