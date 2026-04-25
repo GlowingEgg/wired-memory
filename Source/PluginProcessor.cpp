@@ -276,6 +276,20 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float glide        = apvts.getRawParameterValue ("glide")->load();
     const float fineTune     = apvts.getRawParameterValue ("fine_tune")->load();
 
+    // ── Synth-mode MIDI modulation (Ticket 4) ────────────────────────────
+    // CC overrides are sticky once received (sentinel -1.0f = not yet received).
+    // They only take effect in synth mode; sampler mode always reads the raw parameter.
+    const float ccScatterVal      = ccScatter_.load();
+    const float ccSmearVal        = ccSmear_.load();
+    const float ccDensityTrackVal = ccDensityTrack_.load();
+    const float effScatter      = (synthMode && ccScatterVal      >= 0.0f) ? ccScatterVal      : scatter;
+    const float effSmear        = (synthMode && ccSmearVal        >= 0.0f) ? ccSmearVal        : smear;
+    const float effDensityTrack = (synthMode && ccDensityTrackVal >= 0.0f) ? ccDensityTrackVal : densityTrack;
+
+    // Pitch bend: hardcoded ±2 semitones, synth-mode only.
+    const float pitchBendSemis = synthMode ? pitchBendSemitones_.load() : 0.0f;
+    const double bendMul       = std::exp2 (static_cast<double> (pitchBendSemis) / 12.0);
+
     // ── Mode-switch detection: reset both engines on transition ───────────
     if (synthMode != wasSynthMode_)
     {
@@ -291,6 +305,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         triggeringNote_              = -1;
         releaseFadeActive_           = false;
         releaseFadeSamplesRemaining_ = 0;
+        pitchBendSemitones_.store (0.0f);
+        sustainPedalDown_ = false;
         wasSynthMode_ = synthMode;
     }
 
@@ -350,6 +366,20 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const int   note     = msg.getNoteNumber();
                 const float velocity = msg.getFloatVelocity();
 
+                // If a sustain-held voice is already sounding this note, release
+                // it before allocating a fresh slot (prevents stacking duplicates
+                // of the same pitch when the pedal is down).
+                for (auto& voice : voices_)
+                {
+                    if (voice.sustainHeld
+                        && voice.midiNote == note
+                        && voice.envState != EnvState::Idle)
+                    {
+                        voice.sustainHeld = false;
+                        voice.envState    = EnvState::Release;
+                    }
+                }
+
                 // Allocate voice: prefer idle, then oldest Release, else oldest of any
                 int alloc = -1;
                 for (int v = 0; v < kNumVoices; ++v)
@@ -392,8 +422,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const double targetFreq = 440.0 * std::exp2 ((note - 69.0) / 12.0);
                 const double freqGrainProduct = targetFreq * static_cast<double> (grainSizeSec);
                 const double targetDensity = juce::jlimit (1.0, 32.0, freqGrainProduct);
-                voice.effectiveDensity = (1.0f - densityTrack) * density
-                                       + densityTrack * static_cast<float> (targetDensity);
+                voice.effectiveDensity = (1.0f - effDensityTrack) * density
+                                       + effDensityTrack * static_cast<float> (targetDensity);
                 voice.effectiveDensity = juce::jlimit (1.0f, 32.0f, voice.effectiveDensity);
 
                 if (freqGrainProduct > 32.0)
@@ -425,18 +455,67 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const int note = msg.getNoteNumber();
                 for (auto& voice : voices_)
                 {
-                    if (voice.midiNote == note && voice.envState != EnvState::Idle)
+                    if (voice.midiNote == note && voice.envState != EnvState::Idle
+                        && voice.envState != EnvState::Release
+                        && ! voice.sustainHeld)
                     {
-                        // Sustain pedal logic deferred to Ticket 4
-                        voice.envState = EnvState::Release;
+                        if (sustainPedalDown_)
+                            voice.sustainHeld = true;   // defer release until pedal up
+                        else
+                            voice.envState = EnvState::Release;
                     }
                 }
             }
             else if (msg.isAllNotesOff())
             {
                 for (auto& voice : voices_)
+                {
                     if (voice.envState != EnvState::Idle)
-                        voice.envState = EnvState::Release;
+                    {
+                        voice.sustainHeld = false;
+                        voice.envState    = EnvState::Release;
+                    }
+                }
+            }
+            else if (msg.isPitchWheel())
+            {
+                const int bendValue = msg.getPitchWheelValue();      // 0..16383
+                const float semis = (static_cast<float> (bendValue - 8192) / 8192.0f) * 2.0f;
+                pitchBendSemitones_.store (semis);
+            }
+            else if (msg.isController())
+            {
+                const int cc   = msg.getControllerNumber();
+                const int val  = msg.getControllerValue();
+                const float nv = static_cast<float> (val) / 127.0f;
+
+                switch (cc)
+                {
+                    case 1:  ccScatter_.store      (nv); break;
+                    case 11: ccSmear_.store        (nv); break;
+                    case 74: ccDensityTrack_.store (nv); break;
+                    case 64:
+                    {
+                        const bool down = val >= 64;
+                        if (! down && sustainPedalDown_)
+                        {
+                            // Pedal released — release every sustain-held voice.
+                            for (auto& voice : voices_)
+                            {
+                                if (voice.sustainHeld
+                                    && voice.envState != EnvState::Idle
+                                    && voice.envState != EnvState::Release)
+                                {
+                                    voice.sustainHeld = false;
+                                    voice.envState    = EnvState::Release;
+                                }
+                            }
+                        }
+                        sustainPedalDown_ = down;
+                        break;
+                    }
+                    default: break;
+                }
             }
         }
     }
@@ -730,6 +809,29 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             ? 1.0f - std::exp (-1.0f / juce::jmax (1.0f, glide * static_cast<float> (currentSampleRate_)))
             : 1.0f;
 
+        // Per-block: recompute each active voice's effective density + grain size
+        // so that mid-note changes to the grain_size parameter, density_track CC,
+        // or pitch bend immediately track. Matches the formula used at note-on but
+        // with the bent note substituted for midiNote.
+        for (auto& voice : voices_)
+        {
+            if (voice.envState == EnvState::Idle || voice.midiNote < 0)
+                continue;
+            const double bentNote = static_cast<double> (voice.midiNote) + pitchBendSemis;
+            const double targetFreq = 440.0 * std::exp2 ((bentNote - 69.0) / 12.0);
+            const double freqGrainProduct = targetFreq * static_cast<double> (grainSizeSec);
+            const double targetDensity = juce::jlimit (1.0, 32.0, freqGrainProduct);
+            voice.effectiveDensity = (1.0f - effDensityTrack) * density
+                                   + effDensityTrack * static_cast<float> (targetDensity);
+            voice.effectiveDensity = juce::jlimit (1.0f, 32.0f, voice.effectiveDensity);
+
+            if (freqGrainProduct > 32.0)
+                voice.effectiveGrainSize = static_cast<float> (
+                    std::min (static_cast<double> (grainSizeSec), 32.0 / targetFreq));
+            else
+                voice.effectiveGrainSize = grainSizeSec;
+        }
+
         // Per-voice spawn intervals & grain sizes (samples)
         std::array<int, kNumVoices>    voiceGrainSizeSamples {};
         std::array<double, kNumVoices> voiceSpawnInterval    {};
@@ -846,10 +948,10 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             break; // pool full, no stealable slot for this voice
 
                         double grainStart = voice.playbackPos;
-                        if (scatter > 0.0f)
+                        if (effScatter > 0.0f)
                         {
                             const float rnd = nextRandom() - 0.5f;
-                            grainStart += static_cast<double> (rnd * scatter) * regionLen;
+                            grainStart += static_cast<double> (rnd * effScatter) * regionLen;
                             grainStart = juce::jlimit (static_cast<double> (startFrame),
                                                        static_cast<double> (endFrame - 1),
                                                        grainStart);
@@ -858,7 +960,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                         slot->phase    = grainStart;
 
                         double grainSpeed = speedLockPitch ? speedAbs : 1.0;
-                        grainSpeed *= voice.currentPitchMul;
+                        grainSpeed *= voice.currentPitchMul * bendMul;
                         if (std::abs (pitchScatter) > 0.001f)
                             grainSpeed *= std::exp2 (static_cast<double> (pitchScatter));
                         slot->speed      = grainSpeed;
@@ -997,7 +1099,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         // Run spectral resynthesis when needed:
         // - Always when freeze is on (full spectral output)
         // - When smear > 0 and we have a frozen frame (blend with grain)
-        const bool needSpectral = hasFrozenFrame_ && (freezeOn || smear > 0.0f);
+        const bool needSpectral = hasFrozenFrame_ && (freezeOn || effSmear > 0.0f);
 
         if (needSpectral)
         {
@@ -1048,7 +1150,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 freezeHopCounter_--;
 
                 // Determine effective smear: when freeze is on, force full spectral
-                const float effectiveSmear = freezeOn ? 1.0f : smear;
+                const float effectiveSmear = freezeOn ? 1.0f : effSmear;
 
                 // Crossfade: grain (in buffer) vs spectral
                 const float grainSample = outL[i];

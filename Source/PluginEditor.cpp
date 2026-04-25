@@ -96,9 +96,9 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , fineTuneAttachment     (*p.apvts.getParameter ("fine_tune"),     fineTuneRelay,     nullptr)
 #endif
 {
-    setSize (800, 700);
+    setSize (1100, 850);
     setResizable (true, true);
-    setResizeLimits (500, 400, 1400, 1000);
+    setResizeLimits (600, 500, 1600, 1200);
     startTimerHz (30);
 }
 

@@ -152,6 +152,19 @@ private:
     uint64_t voiceAllocCounter_ = 0;
     bool wasSynthMode_ = false;
 
+    // -- MIDI modulation state (synth mode only; Ticket 4) --
+    std::atomic<float> pitchBendSemitones_ { 0.0f };
+
+    // CC overrides — sentinel -1.0f means "no CC received yet, use parameter".
+    // Sticky once received: the CC override replaces the host parameter for the
+    // lifetime of the plugin instance (no decay back to parameter control).
+    std::atomic<float> ccScatter_       { -1.0f };
+    std::atomic<float> ccSmear_         { -1.0f };
+    std::atomic<float> ccDensityTrack_  { -1.0f };
+
+    // CC64 sustain pedal — touched only on the audio thread.
+    bool sustainPedalDown_ = false;
+
     // -- Grain snapshot for UI --
     juce::SpinLock grainSnapshotLock_;
     std::array<GrainSnapshot, kMaxGrains> grainSnapshot_ {};
