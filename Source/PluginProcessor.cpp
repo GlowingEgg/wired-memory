@@ -4,7 +4,6 @@
 
 WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
     : AudioProcessor (BusesProperties()
-                      .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
@@ -158,6 +157,14 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (-100.0f, 100.0f),
         0.0f));
 
+    // Make-up gain applied to the recorded sample during playback.
+    // Range 0–4 with skew 0.5 puts unity gain (1.0) at the knob centre.
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "sample_gain", 1 },
+        "Sample Gain",
+        juce::NormalisableRange<float> (0.0f, 4.0f, 0.0f, 0.5f),
+        1.0f));
+
     return layout;
 }
 
@@ -190,6 +197,19 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     recordBuffer_ = std::make_unique<float[]> (static_cast<size_t> (recordBufferCapacity_));
     recordBufferPos_ = 0;
     wasCapturing_ = false;
+
+    // Apply any sample restore that arrived before prepareToPlay
+    if (! pendingRestoreSamples_.empty())
+    {
+        const int copyLen = juce::jmin (static_cast<int> (pendingRestoreSamples_.size()),
+                                        recordBufferCapacity_);
+        std::memcpy (recordBuffer_.get(), pendingRestoreSamples_.data(),
+                     sizeof (float) * static_cast<size_t> (copyLen));
+        recordBufferPos_ = copyLen;
+        sampleLength_.store (copyLen);
+        snapshotRebuildPending_.store (true);
+        pendingRestoreSamples_.clear();
+    }
 
     // Reset grain pool
     for (auto& g : grainPool_)
@@ -234,14 +254,9 @@ void WiredMemoryAudioProcessor::releaseResources() {}
 
 bool WiredMemoryAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
-        return false;
-
-    if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
-        return false;
-
-    return true;
+    const auto out = layouts.getMainOutputChannelSet();
+    return out == juce::AudioChannelSet::mono()
+        || out == juce::AudioChannelSet::stereo();
 }
 
 void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
@@ -275,6 +290,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float ampRelease   = apvts.getRawParameterValue ("amp_release")->load();
     const float glide        = apvts.getRawParameterValue ("glide")->load();
     const float fineTune     = apvts.getRawParameterValue ("fine_tune")->load();
+    const float sampleGain   = apvts.getRawParameterValue ("sample_gain")->load();
 
     // ── Synth-mode MIDI modulation (Ticket 4) ────────────────────────────
     // CC overrides are sticky once received (sentinel -1.0f = not yet received).
@@ -289,6 +305,66 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Pitch bend: hardcoded ±2 semitones, synth-mode only.
     const float pitchBendSemis = synthMode ? pitchBendSemitones_.load() : 0.0f;
     const double bendMul       = std::exp2 (static_cast<double> (pitchBendSemis) / 12.0);
+
+    // ── Trim request (message thread → audio thread) ─────────────────────
+    if (trimPending_.exchange (false) && recordBuffer_)
+    {
+        const int total = sampleLength_.load();
+        if (total > 0)
+        {
+            const float ts = trimStartNorm_.load();
+            const float tl = trimLenNorm_.load();
+            const int s = juce::jlimit (0, total, static_cast<int> (ts * total));
+            const int e = juce::jlimit (s, total, s + static_cast<int> (tl * total));
+            const int newLen = e - s;
+            if (newLen > 0)
+            {
+                if (s > 0)
+                    std::memmove (recordBuffer_.get(),
+                                  recordBuffer_.get() + s,
+                                  sizeof (float) * static_cast<size_t> (newLen));
+                std::memset (recordBuffer_.get() + newLen, 0,
+                             sizeof (float) * static_cast<size_t> (recordBufferCapacity_ - newLen));
+                sampleLength_.store (newLen);
+                recordBufferPos_ = newLen;
+
+                // Stop playback so the playhead doesn't reference stale offsets
+                playbackActive_.store (false);
+                playbackPending_.store (false);
+                playbackProgress_.store (0.0f);
+                playbackPosFrac_ = 0.0;
+                for (auto& g : grainPool_)
+                    g.active = false;
+                grainSpawnAccum_ = 0.0;
+                for (auto& v : voices_)
+                    v = Voice {};
+
+                snapshotRebuildPending_.store (true);
+            }
+        }
+    }
+
+    // ── Sample-snapshot rebuild (after restore or trim) ──────────────────
+    if (snapshotRebuildPending_.exchange (false) && recordBuffer_)
+    {
+        const int srcLen = sampleLength_.load();
+        if (srcLen > 0)
+        {
+            const juce::SpinLock::ScopedLockType lock (sampleLock_);
+            const float* src = recordBuffer_.get();
+            for (int i = 0; i < kSampleSnapshotSize; ++i)
+            {
+                const int s = i * srcLen / kSampleSnapshotSize;
+                const int e = juce::jmin ((i + 1) * srcLen / kSampleSnapshotSize, srcLen);
+                float peak = 0.0f;
+                for (int j = s; j < e; ++j)
+                    if (std::abs (src[j]) > std::abs (peak))
+                        peak = src[j];
+                sampleSnapshot_[i] = peak;
+            }
+            sampleReady_ = true;
+        }
+    }
 
     // ── Mode-switch detection: reset both engines on transition ───────────
     if (synthMode != wasSynthMode_)
@@ -597,8 +673,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (playbackPosFrac_));
                 const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
                 const float frac = static_cast<float> (playbackPosFrac_ - idx0);
-                const float samp = recordBuffer_[idx0] * (1.0f - frac)
-                                 + recordBuffer_[idx1] * frac;
+                const float samp = (recordBuffer_[idx0] * (1.0f - frac)
+                                  + recordBuffer_[idx1] * frac) * sampleGain;
 
                 for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                     buffer.getWritePointer (ch)[i] = samp;
@@ -755,8 +831,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     g.active = false;
             }
 
-            // Write to output with gain compensation
-            mix *= gainComp;
+            // Write to output with gain compensation + user make-up gain
+            mix *= gainComp * sampleGain;
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                 buffer.getWritePointer (ch)[i] = mix;
 
@@ -1025,6 +1101,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     g.active = false;
             }
 
+            mix *= sampleGain;
             for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
                 buffer.getWritePointer (ch)[i] = mix;
         }
@@ -1303,6 +1380,13 @@ void WiredMemoryAudioProcessor::stopPlayback()
     triggeringNote_    = -1;
 }
 
+void WiredMemoryAudioProcessor::requestTrim (float startNorm, float lenNorm)
+{
+    trimStartNorm_.store (juce::jlimit (0.0f, 1.0f, startNorm));
+    trimLenNorm_  .store (juce::jlimit (0.0f, 1.0f, lenNorm));
+    trimPending_  .store (true);
+}
+
 float WiredMemoryAudioProcessor::getPlaybackProgress() const
 {
     if (! playbackActive_.load())
@@ -1349,6 +1433,18 @@ void WiredMemoryAudioProcessor::getStateInformation (juce::MemoryBlock& destData
         state.addChild (captureState, -1, nullptr);
     }
 
+    // Persist the recorded sample buffer
+    const int len = sampleLength_.load();
+    if (recordBuffer_ && len > 0)
+    {
+        juce::ValueTree sampleState ("RecordedSample");
+        sampleState.setProperty ("length", len, nullptr);
+        sampleState.setProperty ("sampleRate", currentSampleRate_, nullptr);
+        juce::MemoryBlock mb (recordBuffer_.get(), sizeof (float) * static_cast<size_t> (len));
+        sampleState.setProperty ("samples", mb, nullptr);
+        state.addChild (sampleState, -1, nullptr);
+    }
+
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
     copyXmlToBinary (*xml, destData);
 }
@@ -1368,6 +1464,33 @@ void WiredMemoryAudioProcessor::setStateInformation (const void* data, int sizeI
             auto bundleId = captureState.getProperty ("sourceBundleId").toString().toStdString();
             if (! bundleId.empty())
                 capture_->setSource (bundleId);
+        }
+
+        // Restore recorded sample
+        auto sampleState = tree.getChildWithName ("RecordedSample");
+        if (sampleState.isValid())
+        {
+            const int len = static_cast<int> (sampleState.getProperty ("length", 0));
+            const auto* mb = sampleState.getProperty ("samples").getBinaryData();
+            if (len > 0 && mb != nullptr
+                && mb->getSize() >= sizeof (float) * static_cast<size_t> (len))
+            {
+                pendingRestoreSamples_.assign (len, 0.0f);
+                std::memcpy (pendingRestoreSamples_.data(), mb->getData(),
+                             sizeof (float) * static_cast<size_t> (len));
+
+                // If prepareToPlay has already run, apply immediately.
+                if (recordBuffer_ && recordBufferCapacity_ > 0)
+                {
+                    const int copyLen = juce::jmin (len, recordBufferCapacity_);
+                    std::memcpy (recordBuffer_.get(), pendingRestoreSamples_.data(),
+                                 sizeof (float) * static_cast<size_t> (copyLen));
+                    recordBufferPos_ = copyLen;
+                    sampleLength_.store (copyLen);
+                    snapshotRebuildPending_.store (true);
+                    pendingRestoreSamples_.clear();
+                }
+            }
         }
     }
 }

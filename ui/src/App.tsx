@@ -12,8 +12,10 @@ import {
   stopPlayback as bridgeStopPlayback,
   isInsidePlugin,
   refreshSources,
+  requestSampleSnapshot,
   setSource,
   startPlayback,
+  trimSample,
   type AudioSourceInfo,
 } from "./plugin-bridge";
 
@@ -666,6 +668,7 @@ function SampleWaveform({
   grainPositions,
   onStartChange,
   onLengthChange,
+  onTrim,
   children,
 }: {
   state: CaptureState;
@@ -678,6 +681,7 @@ function SampleWaveform({
   grainPositions: number[];
   onStartChange?: (v: number) => void;
   onLengthChange?: (v: number) => void;
+  onTrim?: () => void;
   children?: React.ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -884,6 +888,16 @@ function SampleWaveform({
       <div className="wrd-monitor-header">
         <span className="wrd-monitor-label">SAMPLE</span>
         <span className={`wrd-monitor-tag ${tagClass}`}>{tagLabel}</span>
+        {state === "done" && onTrim && (
+          <button
+            className="wrd-trim-btn"
+            onClick={onTrim}
+            title="Trim sample to selected window"
+            disabled={lengthNorm >= 0.999 && startNorm <= 0.001}
+          >
+            KEEP SELECTED
+          </button>
+        )}
       </div>
       {state === "idle" && (
         <div className="wrd-monitor-empty">
@@ -1023,6 +1037,7 @@ export default function App() {
   const ampReleaseParam = useJuceSlider("amp_release");
   const glideParam = useJuceSlider("glide");
   const fineTuneParam = useJuceSlider("fine_tune");
+  const sampleGainParam = useJuceSlider("sample_gain");
 
   // Speed knob: non-linear UI curve for higher resolution near center (1x).
   // We map a "curved" 0-1 knob position through a power curve so that
@@ -1103,6 +1118,10 @@ export default function App() {
   const fineTuneCents = -100 + 200 * fineTuneParam.value;
   const fineTuneDisplay =
     (fineTuneCents >= 0 ? "+" : "") + fineTuneCents.toFixed(0);
+
+  // sample_gain: 0–4 with skew 0.5 → actual = 4 * norm². Display as %.
+  const sampleGainActual = 4 * Math.pow(sampleGainParam.value, 2.0);
+  const sampleGainDisplay = (sampleGainActual * 100).toFixed(0);
 
   const synthOn = synthModeParam.value;
 
@@ -1227,6 +1246,7 @@ export default function App() {
       speedLockPitchParam.set(true);
       loopParam.set(false);
       reverseParam.set(false);
+      sampleGainParam.set(0.5);
       setCaptureState("recording");
       setSampleData([]);
       captureParam.set(true);
@@ -1268,6 +1288,7 @@ export default function App() {
     loopParam,
     reverseParam,
     speedLockPitchParam,
+    sampleGainParam,
     speedDefaultNorm,
   ]);
 
@@ -1277,6 +1298,8 @@ export default function App() {
       setSampleData(samples);
       setCaptureState("done");
     });
+    // Ask C++ to resend any sample restored from saved plugin state.
+    requestSampleSnapshot();
     return unsub;
   }, []);
 
@@ -1310,6 +1333,32 @@ export default function App() {
     setSelectedSource(bundleId);
     setSource(bundleId);
   }, []);
+
+  const handleTrim = useCallback(() => {
+    const s = startParam.value;
+    const l = Math.min(lengthParam.value, 1 - s);
+    if (l <= 0) return;
+
+    if (isInsidePlugin()) {
+      stopPlayback();
+      trimSample(s, l);
+    } else {
+      // Dev mode: trim the local sample buffer
+      stopPlayback();
+      const total = sampleData.length;
+      const startIdx = Math.floor(s * total);
+      const endIdx = Math.min(total, Math.floor((s + l) * total));
+      const trimmed = sampleData.slice(startIdx, endIdx);
+      setSampleData(trimmed);
+      startParam.set(0);
+      lengthParam.set(1);
+    }
+  }, [
+    startParam,
+    lengthParam,
+    sampleData,
+    stopPlayback,
+  ]);
 
   return (
     <div className="wrd-frame">
@@ -1368,6 +1417,7 @@ export default function App() {
               grainPositions={grainPositions}
               onStartChange={startParam.set}
               onLengthChange={lengthParam.set}
+              onTrim={handleTrim}
             >
               <div className="wrd-sample-controls">
                 <button
@@ -1414,6 +1464,15 @@ export default function App() {
                     color="light"
                     onChange={lengthParam.set}
                     defaultValue={1}
+                  />
+                  <Knob
+                    label="VOL"
+                    normalizedValue={sampleGainParam.value}
+                    displayValue={sampleGainDisplay}
+                    unit="%"
+                    color="amber"
+                    onChange={sampleGainParam.set}
+                    defaultValue={0.5}
                   />
                 </div>
                 <div className="wrd-sample-knobs wrd-grain-knobs">

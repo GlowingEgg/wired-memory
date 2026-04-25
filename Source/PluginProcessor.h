@@ -95,6 +95,15 @@ public:
     void startPlayback();
     void stopPlayback();
 
+    /** Request the audio thread to trim the recorded sample to the current
+        start/length window on the next processBlock. The start/length APVTS
+        params are reset to 0/1 so the trimmed buffer covers the full region. */
+    void requestTrim (float startNorm, float lenNorm);
+
+    /** Ask the audio thread to rebuild + republish the sample snapshot.
+        The UI calls this on mount so it picks up state-restored samples. */
+    void requestSampleSnapshotResend() { snapshotRebuildPending_.store (true); }
+
     /** Returns normalised playback progress [0, 1], or 0 if not playing. */
     float getPlaybackProgress() const;
 
@@ -128,6 +137,17 @@ private:
     int recordBufferCapacity_ = 0;
     int recordBufferPos_      = 0;
     bool wasCapturing_        = false;
+
+    // -- Pending sample restore (set by setStateInformation, applied in prepareToPlay) --
+    std::vector<float> pendingRestoreSamples_;
+
+    // -- Trim request (message thread → audio thread) --
+    std::atomic<bool>  trimPending_     { false };
+    std::atomic<float> trimStartNorm_   { 0.0f };
+    std::atomic<float> trimLenNorm_     { 1.0f };
+
+    // -- Captured sample-snapshot re-emit request (for restore/trim) --
+    std::atomic<bool> snapshotRebuildPending_ { false };
 
     // -- Sample playback (grain engine) --
     std::atomic<bool>  playbackActive_  { false };

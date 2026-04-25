@@ -709,6 +709,37 @@
   color: rgba(60, 100, 160, 0.8) !important;
 }
 
+/* ── Trim ("KEEP SELECTED") button ───────────────────────────────────── */
+.wrd-trim-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 8px;
+  letter-spacing: 0.12em;
+  color: rgba(60, 100, 160, 0.85);
+  background: rgba(60, 100, 160, 0.08);
+  border: 1px solid rgba(60, 100, 160, 0.35);
+  border-radius: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.wrd-trim-btn:hover {
+  background: rgba(60, 100, 160, 0.18);
+  border-color: rgba(60, 100, 160, 0.6);
+  box-shadow: 0 0 6px rgba(60, 100, 160, 0.25);
+}
+
+.wrd-trim-btn:active {
+  transform: scale(0.96);
+}
+
+.wrd-trim-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
 @keyframes wrd-proc-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }

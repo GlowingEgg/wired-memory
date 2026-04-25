@@ -98,6 +98,9 @@ private:
     juce::WebSliderRelay fineTuneRelay { "fine_tune" };
     juce::WebSliderParameterAttachment fineTuneAttachment;
 
+    juce::WebSliderRelay sampleGainRelay { "sample_gain" };
+    juce::WebSliderParameterAttachment sampleGainAttachment;
+
     std::unique_ptr<juce::WebBrowserComponent> webBrowser;
 
     /** Send the available source list to the JS frontend. */

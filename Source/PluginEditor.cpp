@@ -94,6 +94,7 @@ WiredMemoryAudioProcessorEditor::WiredMemoryAudioProcessorEditor (WiredMemoryAud
       , ampReleaseAttachment   (*p.apvts.getParameter ("amp_release"),   ampReleaseRelay,   nullptr)
       , glideAttachment        (*p.apvts.getParameter ("glide"),         glideRelay,        nullptr)
       , fineTuneAttachment     (*p.apvts.getParameter ("fine_tune"),     fineTuneRelay,     nullptr)
+      , sampleGainAttachment   (*p.apvts.getParameter ("sample_gain"),   sampleGainRelay,   nullptr)
 #endif
 {
     setSize (1100, 850);
@@ -220,6 +221,7 @@ void WiredMemoryAudioProcessorEditor::resized()
             .withOptionsFrom (ampReleaseRelay)
             .withOptionsFrom (glideRelay)
             .withOptionsFrom (fineTuneRelay)
+            .withOptionsFrom (sampleGainRelay)
             // JS → C++: set capture source by bundle ID
             .withNativeFunction ("sck_setSource", [this] (auto& args, auto complete) {
                 auto* cap = audioProcessor.getCapture();
@@ -240,6 +242,36 @@ void WiredMemoryAudioProcessorEditor::resized()
             // JS → C++: stop sample playback
             .withNativeFunction ("sck_stop", [this] (auto&, auto complete) {
                 audioProcessor.stopPlayback();
+                complete ({});
+            })
+            // JS → C++: re-emit the cached sample snapshot. Used on UI mount so the
+            // React side picks up a sample that was restored from saved plugin state.
+            .withNativeFunction ("sck_request_sample", [this] (auto&, auto complete) {
+                audioProcessor.requestSampleSnapshotResend();
+                complete ({});
+            })
+            // JS → C++: trim the recorded buffer to the supplied window.
+            // args: [startNorm: float, lenNorm: float] (normalised against the full sample)
+            .withNativeFunction ("sck_trim", [this] (auto& args, auto complete) {
+                if (args.size() >= 2)
+                {
+                    const float s = static_cast<float> ((double) args[0]);
+                    const float l = static_cast<float> ((double) args[1]);
+                    audioProcessor.requestTrim (s, l);
+
+                    if (auto* startP = audioProcessor.apvts.getParameter ("start"))
+                    {
+                        startP->beginChangeGesture();
+                        startP->setValueNotifyingHost (0.0f);
+                        startP->endChangeGesture();
+                    }
+                    if (auto* lenP = audioProcessor.apvts.getParameter ("length"))
+                    {
+                        lenP->beginChangeGesture();
+                        lenP->setValueNotifyingHost (1.0f);
+                        lenP->endChangeGesture();
+                    }
+                }
                 complete ({});
             })
       #if PLUGIN_USE_WEB_UI

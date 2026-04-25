@@ -38,6 +38,7 @@ const mockSliderDefaults: Record<string, number> = {
   speed: Math.pow(0.9 / 9.9, 0.3),   // 1.0x — matches JUCE skew=0.3, range 0.1–10.0
   start: 0.0,
   length: 1.0,
+  sample_gain: 0.5,                  // 1.0x — matches JUCE skew=0.5, range 0–4
 };
 
 function getMockSlider(name: string) {
@@ -296,6 +297,30 @@ export function stopPlayback(): void {
     Juce.getNativeFunction("sck_stop")();
   } else {
     console.log("[mock] stopPlayback");
+  }
+}
+
+/**
+ * Ask the C++ backend to re-emit the cached sample snapshot. Used on UI
+ * mount so the React side picks up a sample that was restored from saved
+ * plugin state before the listener was registered.
+ */
+export function requestSampleSnapshot(): void {
+  if (Juce) {
+    Juce.getNativeFunction("sck_request_sample")();
+  }
+}
+
+/**
+ * Trim the recorded sample to the supplied [start, start+length] window.
+ * After trimming the start/length params reset to 0/1 so the new buffer
+ * occupies the full region.
+ */
+export function trimSample(startNorm: number, lenNorm: number): void {
+  if (Juce) {
+    Juce.getNativeFunction("sck_trim")(startNorm, lenNorm);
+  } else {
+    console.log("[mock] trimSample", { startNorm, lenNorm });
   }
 }
 
