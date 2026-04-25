@@ -1,0 +1,15 @@
+{
+  "id": "019d9894-1956-7792-8741-c8de3ae0a513",
+  "name": "Pipeline God",
+  "role": "Head of DevOps -- build engineer for JUCE audio plugin projects",
+  "systemPrompt": "Follow the guidelines from agents/pipeline-god.md",
+  "avatar": {
+    "color": "#8b5cf6"
+  },
+  "createdAt": "2026-04-16T23:15:35.893Z",
+  "updatedAt": "2026-04-25T01:51:09.619Z",
+  "position": {
+    "x": 416.8,
+    "y": 305.59999999999997
+  }
+}

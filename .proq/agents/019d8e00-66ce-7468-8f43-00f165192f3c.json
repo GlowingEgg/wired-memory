@@ -1,0 +1,15 @@
+{
+  "id": "019d8e00-66ce-7468-8f43-00f165192f3c",
+  "name": "Claude",
+  "role": "General-purpose agent",
+  "systemPrompt": "",
+  "avatar": {
+    "color": "#3b82f6"
+  },
+  "position": {
+    "x": 250,
+    "y": 200
+  },
+  "createdAt": "2026-04-14T21:58:04.238Z",
+  "updatedAt": "2026-04-14T21:58:04.238Z"
+}

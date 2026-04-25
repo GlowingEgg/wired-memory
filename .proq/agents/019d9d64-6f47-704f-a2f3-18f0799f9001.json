@@ -1,0 +1,15 @@
+{
+  "id": "019d9d64-6f47-704f-a2f3-18f0799f9001",
+  "name": "Product Engineer",
+  "role": "Plan product developments, develop engineering plans",
+  "systemPrompt": "Follow the guidelines from agents/product-engineer.md",
+  "avatar": {
+    "color": "#8b5cf6"
+  },
+  "createdAt": "2026-04-17T21:41:38.247Z",
+  "updatedAt": "2026-04-25T01:51:30.794Z",
+  "position": {
+    "x": 92.3705655215667,
+    "y": 307.9472559424065
+  }
+}
