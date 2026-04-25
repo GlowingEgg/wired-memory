@@ -115,6 +115,12 @@ private:
     std::atomic<float> playbackProgress_ { 0.0f };  // normalised progress for UI
     std::atomic<int>   sampleLength_    { 0 };       // length of recorded sample in frames
 
+    // -- MIDI gate / release fade (sampler mode) --
+    int  triggeringNote_              = -1;
+    bool releaseFadeActive_           = false;
+    int  releaseFadeSamplesRemaining_ = 0;
+    int  releaseFadeTotal_            = 0;
+
     // -- Grain pool --
     std::array<Grain, kMaxGrains> grainPool_ {};
     double grainSpawnAccum_ = 0.0;  // accumulator for grain spawn timing

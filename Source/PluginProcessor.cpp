@@ -218,6 +218,11 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     hasFrozenFrame_ = false;
     freezeHopCounter_ = 0;
     driftRngState_ = 0xDEADBEEF;
+
+    triggeringNote_              = -1;
+    releaseFadeActive_           = false;
+    releaseFadeSamplesRemaining_ = 0;
+    releaseFadeTotal_            = 0;
 }
 void WiredMemoryAudioProcessor::releaseResources() {}
 
@@ -234,7 +239,7 @@ bool WiredMemoryAudioProcessor::isBusesLayoutSupported (const BusesLayout& layou
 }
 
 void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
-                                               juce::MidiBuffer& /*midiMessages*/)
+                                               juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
 
@@ -255,6 +260,48 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float drift        = apvts.getRawParameterValue ("drift")->load();
     const float smear        = apvts.getRawParameterValue ("smear")->load();
     const bool  speedLockPitch = apvts.getRawParameterValue ("speed_lock_pitch")->load() >= 0.5f;
+    const bool  synthMode    = apvts.getRawParameterValue ("synth_mode")->load() >= 0.5f;
+    const bool  gateMode     = apvts.getRawParameterValue ("trigger_mode")->load() >= 0.5f;
+
+    // ── MIDI handling for sampler mode (block-quantised) ───────────────────
+    // Synth mode is handled in a later ticket; skip this logic when active.
+    if (! synthMode)
+    {
+        for (const auto meta : midiMessages)
+        {
+            const auto msg = meta.getMessage();
+
+            if (msg.isNoteOn())
+            {
+                if (sampleLength_.load() > 0)
+                {
+                    playbackPending_.store (true);
+                    triggeringNote_     = msg.getNoteNumber();
+                    releaseFadeActive_  = false;
+                }
+            }
+            else if (msg.isNoteOff() && gateMode)
+            {
+                const int note = msg.getNoteNumber();
+                const bool willPlay = playbackActive_.load() || playbackPending_.load();
+                if (willPlay && note == triggeringNote_)
+                {
+                    releaseFadeTotal_            = juce::jmax (1, static_cast<int> (currentSampleRate_ * 0.030));
+                    releaseFadeSamplesRemaining_ = releaseFadeTotal_;
+                    releaseFadeActive_           = true;
+                }
+            }
+            else if (msg.isAllNotesOff() && gateMode)
+            {
+                if (playbackActive_.load() || playbackPending_.load())
+                {
+                    releaseFadeTotal_            = juce::jmax (1, static_cast<int> (currentSampleRate_ * 0.030));
+                    releaseFadeSamplesRemaining_ = releaseFadeTotal_;
+                    releaseFadeActive_           = true;
+                }
+            }
+        }
+    }
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -647,6 +694,37 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         wasFrozen_ = freezeOn;
     }
 
+    // ── Release fade (applied to final output, after smear crossfade) ──────
+    if (releaseFadeActive_)
+    {
+        const int numCh = buffer.getNumChannels();
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            if (releaseFadeSamplesRemaining_ <= 0)
+            {
+                for (int j = i; j < numSamples; ++j)
+                    for (int ch = 0; ch < numCh; ++ch)
+                        buffer.getWritePointer (ch)[j] = 0.0f;
+
+                playbackActive_.store (false);
+                playbackProgress_.store (0.0f);
+                for (auto& g : grainPool_)
+                    g.active = false;
+                grainSpawnAccum_ = 0.0;
+                releaseFadeActive_ = false;
+                triggeringNote_    = -1;
+                break;
+            }
+
+            const float gain = static_cast<float> (releaseFadeSamplesRemaining_)
+                             / static_cast<float> (releaseFadeTotal_);
+            for (int ch = 0; ch < numCh; ++ch)
+                buffer.getWritePointer (ch)[i] *= gain;
+            --releaseFadeSamplesRemaining_;
+        }
+    }
+
     // Reset accumulation buffer when recording starts
     if (captureOn && ! wasCapturing_)
         recordBufferPos_ = 0;
@@ -749,6 +827,8 @@ void WiredMemoryAudioProcessor::stopPlayback()
     for (auto& g : grainPool_)
         g.active = false;
     grainSpawnAccum_ = 0.0;
+    releaseFadeActive_ = false;
+    triggeringNote_    = -1;
 }
 
 float WiredMemoryAudioProcessor::getPlaybackProgress() const
