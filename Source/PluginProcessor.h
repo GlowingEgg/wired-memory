@@ -100,6 +100,13 @@ public:
         params are reset to 0/1 so the trimmed buffer covers the full region. */
     void requestTrim (float startNorm, float lenNorm);
 
+    /** Decode an audio file (WAV/AIFF/FLAC/OGG/MP3 where supported) from raw
+        bytes and queue it as the new sample buffer. Decoding, channel-mixdown
+        and resampling happen on the calling (message) thread; the audio thread
+        swaps the result into recordBuffer_ on the next processBlock.
+        Returns true if decode succeeded. */
+    bool loadSampleFromBytes (const void* data, size_t numBytes);
+
     /** Ask the audio thread to rebuild + republish the sample snapshot.
         The UI calls this on mount so it picks up state-restored samples. */
     void requestSampleSnapshotResend() { snapshotRebuildPending_.store (true); }
@@ -145,6 +152,12 @@ private:
     std::atomic<bool>  trimPending_     { false };
     std::atomic<float> trimStartNorm_   { 0.0f };
     std::atomic<float> trimLenNorm_     { 1.0f };
+
+    // -- File load (message thread decodes, audio thread swaps in) --
+    juce::AudioFormatManager formatManager_;
+    juce::SpinLock           pendingLoadLock_;
+    std::vector<float>       pendingLoadBuffer_;
+    std::atomic<bool>        loadPending_ { false };
 
     // -- Captured sample-snapshot re-emit request (for restore/trim) --
     std::atomic<bool> snapshotRebuildPending_ { false };

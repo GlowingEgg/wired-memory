@@ -694,6 +694,77 @@
   color: rgba(220, 60, 50, 0.75);
 }
 
+.wrd-load-btn {
+  margin-left: 8px;
+  padding: 5px 11px;
+  font-family: 'Share Tech Mono', monospace;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.wrd-load-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.75);
+  border-color: rgba(80, 150, 200, 0.35);
+  color: rgba(40, 90, 130, 0.85);
+  box-shadow: 0 0 8px rgba(80, 150, 200, 0.18);
+}
+
+.wrd-load-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.wrd-load-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Drag-and-drop overlay ─────────────────────────────────────────── */
+.wrd-workstation--drag {
+  position: relative;
+}
+
+.wrd-workstation--drag::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px dashed rgba(80, 150, 200, 0.55);
+  border-radius: 12px;
+  background: rgba(180, 220, 245, 0.08);
+  box-shadow: 0 0 24px rgba(80, 150, 200, 0.2) inset;
+  z-index: 50;
+}
+
+.wrd-drop-overlay {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 60;
+  padding: 18px 28px;
+  border-radius: 6px;
+  background: rgba(20, 35, 50, 0.78);
+  border: 1px solid rgba(140, 200, 240, 0.6);
+  box-shadow: 0 0 30px rgba(80, 150, 200, 0.45);
+}
+
+.wrd-drop-overlay-text {
+  font-family: 'VT323', 'Share Tech Mono', monospace;
+  font-size: 22px;
+  letter-spacing: 0.18em;
+  color: rgba(220, 240, 255, 0.95);
+  text-shadow: 0 0 8px rgba(140, 200, 240, 0.7);
+}
+
 /* ── Sample viewer states ──────────────────────────────────────────── */
 .wrd-monitor-tag--rec {
   color: rgba(220, 60, 50, 0.8) !important;

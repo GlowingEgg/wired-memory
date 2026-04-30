@@ -312,6 +312,61 @@ export function requestSampleSnapshot(): void {
 }
 
 /**
+ * Encode an ArrayBuffer to a base64 string in browser-safe chunks.
+ * Naive String.fromCharCode(...big array) blows the call-stack on
+ * multi-MB audio files.
+ */
+function arrayBufferToBase64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * Load an audio file into the sampler. Accepts WAV / AIFF / FLAC / OGG (and
+ * MP3 on platforms where JUCE's MP3 decoder is available). The file is
+ * decoded, mono-mixed and resampled by the C++ backend, then queued for the
+ * audio thread to swap in.
+ *
+ * In dev mode this generates a fake peak-envelope from the raw bytes so the
+ * UI behaves like a real load without involving Web Audio.
+ */
+export async function loadSampleFromFile(file: File | Blob): Promise<boolean> {
+  const buf = await file.arrayBuffer();
+
+  if (Juce) {
+    const b64 = arrayBufferToBase64(buf);
+    const result = await Juce.getNativeFunction("sck_load_file")(b64);
+    return result === true || result === "true";
+  }
+
+  // Dev mock: synthesise a peak-envelope from byte hash so we get visual feedback.
+  const bytes = new Uint8Array(buf);
+  const samples: number[] = [];
+  const step = Math.max(1, Math.floor(bytes.length / 512));
+  for (let i = 0; i < 512; i++) {
+    let peak = 0;
+    const start = i * step;
+    const end = Math.min(start + step, bytes.length);
+    for (let j = start; j < end; j++) {
+      const v = (bytes[j] - 128) / 128;
+      if (Math.abs(v) > Math.abs(peak)) peak = v;
+    }
+    samples.push(peak);
+  }
+  setTimeout(() => {
+    const listeners = mockEventListeners.get("sck:sample");
+    if (listeners) listeners.forEach((cb) => cb(JSON.stringify(samples)));
+  }, 50);
+  return true;
+}
+
+/**
  * Trim the recorded sample to the supplied [start, start+length] window.
  * After trimming the start/length params reset to 0/1 so the new buffer
  * occupies the full region.

@@ -7,6 +7,7 @@ WiredMemoryAudioProcessor::WiredMemoryAudioProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
+    formatManager_.registerBasicFormats();
 }
 
 juce::AudioProcessorValueTreeState::ParameterLayout
@@ -305,6 +306,48 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // Pitch bend: hardcoded ±2 semitones, synth-mode only.
     const float pitchBendSemis = synthMode ? pitchBendSemitones_.load() : 0.0f;
     const double bendMul       = std::exp2 (static_cast<double> (pitchBendSemis) / 12.0);
+
+    // ── File load (message thread → audio thread) ───────────────────────
+    // Hold off until captureOn is false, otherwise the capture state
+    // machine below would zero recordBufferPos_ and overwrite our buffer.
+    if (loadPending_.load() && recordBuffer_ && ! captureOn)
+    {
+        const juce::SpinLock::ScopedTryLockType lock (pendingLoadLock_);
+        if (lock.isLocked())
+        {
+            const int newLen = juce::jmin (static_cast<int> (pendingLoadBuffer_.size()),
+                                           recordBufferCapacity_);
+            if (newLen > 0)
+            {
+                std::memcpy (recordBuffer_.get(), pendingLoadBuffer_.data(),
+                             sizeof (float) * static_cast<size_t> (newLen));
+                if (recordBufferCapacity_ - newLen > 0)
+                    std::memset (recordBuffer_.get() + newLen, 0,
+                                 sizeof (float) * static_cast<size_t> (recordBufferCapacity_ - newLen));
+
+                sampleLength_.store (newLen);
+                recordBufferPos_ = newLen;
+                wasCapturing_ = false;
+
+                // Stop transport / reset all engines so playheads don't reference stale offsets
+                playbackActive_ .store (false);
+                playbackPending_.store (false);
+                playbackProgress_.store (0.0f);
+                playbackPosFrac_ = 0.0;
+                for (auto& g : grainPool_)
+                    g.active = false;
+                grainSpawnAccum_ = 0.0;
+                for (auto& v : voices_)
+                    v = Voice {};
+                releaseFadeActive_ = false;
+                triggeringNote_    = -1;
+
+                snapshotRebuildPending_.store (true);
+            }
+            pendingLoadBuffer_.clear();
+            loadPending_.store (false);
+        }
+    }
 
     // ── Trim request (message thread → audio thread) ─────────────────────
     if (trimPending_.exchange (false) && recordBuffer_)
@@ -1385,6 +1428,79 @@ void WiredMemoryAudioProcessor::requestTrim (float startNorm, float lenNorm)
     trimStartNorm_.store (juce::jlimit (0.0f, 1.0f, startNorm));
     trimLenNorm_  .store (juce::jlimit (0.0f, 1.0f, lenNorm));
     trimPending_  .store (true);
+}
+
+bool WiredMemoryAudioProcessor::loadSampleFromBytes (const void* data, size_t numBytes)
+{
+    if (data == nullptr || numBytes == 0)
+        return false;
+
+    auto stream = std::make_unique<juce::MemoryInputStream> (data, numBytes, false);
+    std::unique_ptr<juce::AudioFormatReader> reader (
+        formatManager_.createReaderFor (std::move (stream)));
+    if (reader == nullptr || reader->lengthInSamples <= 0)
+        return false;
+
+    const double srcRate = reader->sampleRate > 0.0 ? reader->sampleRate : currentSampleRate_;
+    const double dstRate = currentSampleRate_ > 0.0 ? currentSampleRate_ : srcRate;
+    const int    srcCh   = juce::jmax (1, (int) reader->numChannels);
+    const auto   srcLen  = (juce::int64) reader->lengthInSamples;
+
+    // Decode into a temporary multichannel buffer
+    juce::AudioBuffer<float> srcBuf (srcCh, (int) juce::jmin (srcLen,
+                                            (juce::int64) (kMaxRecordSeconds * srcRate * 2 + srcRate)));
+    if (! reader->read (&srcBuf, 0, srcBuf.getNumSamples(), 0, true, srcCh > 1))
+        return false;
+
+    // Mono mix-down
+    const int srcFrames = srcBuf.getNumSamples();
+    std::vector<float> mono (static_cast<size_t> (srcFrames));
+    if (srcCh == 1)
+    {
+        std::memcpy (mono.data(), srcBuf.getReadPointer (0), sizeof (float) * static_cast<size_t> (srcFrames));
+    }
+    else
+    {
+        const float invCh = 1.0f / static_cast<float> (srcCh);
+        for (int i = 0; i < srcFrames; ++i)
+        {
+            float sum = 0.0f;
+            for (int c = 0; c < srcCh; ++c)
+                sum += srcBuf.getReadPointer (c)[i];
+            mono[(size_t) i] = sum * invCh;
+        }
+    }
+
+    // Resample to host sample rate (mono LagrangeInterpolator)
+    std::vector<float> resampled;
+    const float ratio = static_cast<float> (srcRate / dstRate);
+    if (std::abs (ratio - 1.0f) < 1.0e-4f)
+    {
+        resampled = std::move (mono);
+    }
+    else
+    {
+        const int outFrames = static_cast<int> (std::ceil (srcFrames / ratio));
+        resampled.assign ((size_t) outFrames, 0.0f);
+        juce::LagrangeInterpolator interp;
+        interp.process (ratio, mono.data(), resampled.data(), outFrames,
+                        srcFrames, 0);
+    }
+
+    // Truncate to capacity (kMaxRecordSeconds at host rate)
+    const int capFrames = static_cast<int> (dstRate * kMaxRecordSeconds);
+    if (capFrames > 0 && (int) resampled.size() > capFrames)
+        resampled.resize ((size_t) capFrames);
+
+    if (resampled.empty())
+        return false;
+
+    {
+        const juce::SpinLock::ScopedLockType lock (pendingLoadLock_);
+        pendingLoadBuffer_ = std::move (resampled);
+    }
+    loadPending_.store (true);
+    return true;
 }
 
 float WiredMemoryAudioProcessor::getPlaybackProgress() const

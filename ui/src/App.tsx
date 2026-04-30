@@ -11,6 +11,7 @@ import {
   addWaveformListener,
   stopPlayback as bridgeStopPlayback,
   isInsidePlugin,
+  loadSampleFromFile,
   refreshSources,
   requestSampleSnapshot,
   setSource,
@@ -622,11 +623,28 @@ type CaptureState = "idle" | "recording" | "processing" | "done";
 function CaptureButton({
   state,
   onClick,
+  onLoadFile,
 }: {
   state: CaptureState;
   onClick: () => void;
+  onLoadFile: (file: File) => void;
 }) {
   const isRecording = state === "recording";
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLoadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) onLoadFile(file);
+      e.target.value = "";
+    },
+    [onLoadFile],
+  );
+
   return (
     <div className="wrd-capture-row">
       <div className="wrd-capture-line" />
@@ -651,6 +669,21 @@ function CaptureButton({
           {state === "done" && "REC"}
         </span>
       </button>
+      <button
+        className="wrd-load-btn"
+        onClick={handleLoadClick}
+        disabled={state === "recording" || state === "processing"}
+        title="Load audio file (or drop one onto the panel)"
+      >
+        LOAD
+      </button>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="audio/*,.wav,.aif,.aiff,.flac,.ogg,.mp3"
+        style={{ display: "none" }}
+        onChange={handleFileChange}
+      />
       <div className="wrd-capture-line" />
     </div>
   );
@@ -1228,6 +1261,101 @@ export default function App() {
     return unsub;
   }, []);
 
+  // Load a file from disk (drag-drop or file picker). Same neutral-control
+  // reset as recording so a fresh sample lands on a clean slate.
+  const resetSampleControls = useCallback(() => {
+    speedParam.set(speedDefaultNorm);
+    startParam.set(0);
+    lengthParam.set(1);
+    grainSizeParam.set(0.4286);
+    densityParam.set(0);
+    scatterParam.set(0);
+    pitchScatterParam.set(0.5);
+    shapeParam.set(0);
+    freezeParam.set(false);
+    driftParam.set(0);
+    smearParam.set(0);
+    speedLockPitchParam.set(true);
+    loopParam.set(false);
+    reverseParam.set(false);
+    sampleGainParam.set(0.5);
+  }, [
+    speedParam,
+    startParam,
+    lengthParam,
+    grainSizeParam,
+    densityParam,
+    scatterParam,
+    pitchScatterParam,
+    shapeParam,
+    freezeParam,
+    driftParam,
+    smearParam,
+    speedLockPitchParam,
+    loopParam,
+    reverseParam,
+    sampleGainParam,
+    speedDefaultNorm,
+  ]);
+
+  const handleLoadFile = useCallback(
+    async (file: File) => {
+      stopPlayback();
+      if (captureParam.value) captureParam.set(false);
+      resetSampleControls();
+      setSampleData([]);
+      setCaptureState("processing");
+      try {
+        const ok = await loadSampleFromFile(file);
+        if (!ok) {
+          // Decode failed — drop back to a usable state
+          setCaptureState((prev) =>
+            prev === "processing" ? "idle" : prev,
+          );
+        }
+      } catch {
+        setCaptureState((prev) => (prev === "processing" ? "idle" : prev));
+      }
+    },
+    [stopPlayback, captureParam, resetSampleControls],
+  );
+
+  // Drag-and-drop on the workstation
+  const [dragActive, setDragActive] = useState(false);
+  const dragDepthRef = useRef(0);
+
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+    e.preventDefault();
+    dragDepthRef.current += 1;
+    setDragActive(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+    e.preventDefault();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) setDragActive(false);
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setDragActive(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleLoadFile(file);
+    },
+    [handleLoadFile],
+  );
+
   // Stop any active playback when a new recording starts, reset controls to neutral
   const handleCapture = useCallback(() => {
     if (captureState === "idle" || captureState === "done") {
@@ -1383,7 +1511,13 @@ export default function App() {
         </div>
 
         {/* Centered workstation */}
-        <div className="wrd-workstation">
+        <div
+          className={`wrd-workstation ${dragActive ? "wrd-workstation--drag" : ""}`}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        >
           <div className="wrd-monitor-section">
             <div className="wrd-viewfinder">
               <div className="wrd-corner wrd-corner--tl" />
@@ -1401,7 +1535,16 @@ export default function App() {
                 />
               }
             />
-            <CaptureButton state={captureState} onClick={handleCapture} />
+            <CaptureButton
+              state={captureState}
+              onClick={handleCapture}
+              onLoadFile={handleLoadFile}
+            />
+            {dragActive && (
+              <div className="wrd-drop-overlay">
+                <div className="wrd-drop-overlay-text">DROP AUDIO FILE</div>
+              </div>
+            )}
             <SampleWaveform
               state={captureState}
               sampleData={sampleData}

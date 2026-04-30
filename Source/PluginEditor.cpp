@@ -250,6 +250,31 @@ void WiredMemoryAudioProcessorEditor::resized()
                 audioProcessor.requestSampleSnapshotResend();
                 complete ({});
             })
+            // JS → C++: load a sample from a base64-encoded audio file.
+            // args: [base64Data: string]
+            .withNativeFunction ("sck_load_file", [this] (auto& args, auto complete) {
+                bool ok = false;
+                if (args.size() > 0 && args[0].isString())
+                {
+                    juce::MemoryOutputStream decoded;
+                    if (juce::Base64::convertFromBase64 (decoded, args[0].toString()))
+                    {
+                        // Stop capture before swapping in a new sample so the
+                        // capture state machine can't zero recordBufferPos_.
+                        if (auto* capP = audioProcessor.apvts.getParameter ("capture"))
+                        {
+                            if (capP->getValue() >= 0.5f)
+                            {
+                                capP->beginChangeGesture();
+                                capP->setValueNotifyingHost (0.0f);
+                                capP->endChangeGesture();
+                            }
+                        }
+                        ok = audioProcessor.loadSampleFromBytes (decoded.getData(), decoded.getDataSize());
+                    }
+                }
+                complete (juce::var (ok));
+            })
             // JS → C++: trim the recorded buffer to the supplied window.
             // args: [startNorm: float, lenNorm: float] (normalised against the full sample)
             .withNativeFunction ("sck_trim", [this] (auto& args, auto complete) {
