@@ -617,6 +617,29 @@ function LiveWaveform({ sourceSelector }: { sourceSelector: React.ReactNode }) {
   );
 }
 
+/* ── Audio file detection (used for picker + drag-drop) ── */
+const AUDIO_EXTENSIONS = [
+  ".wav",
+  ".aif",
+  ".aiff",
+  ".flac",
+  ".ogg",
+  ".oga",
+  ".mp3",
+  ".m4a",
+  ".aac",
+  ".caf",
+  ".wma",
+  ".opus",
+];
+const AUDIO_FILE_ACCEPT = `audio/*,${AUDIO_EXTENSIONS.join(",")}`;
+
+function isAudioFile(file: { name: string; type?: string }): boolean {
+  if (file.type && file.type.startsWith("audio/")) return true;
+  const lower = file.name.toLowerCase();
+  return AUDIO_EXTENSIONS.some((ext) => lower.endsWith(ext));
+}
+
 /* ── Capture button ── */
 type CaptureState = "idle" | "recording" | "processing" | "done";
 
@@ -624,10 +647,14 @@ function CaptureButton({
   state,
   onClick,
   onLoadFile,
+  recordDisabled,
+  recordDisabledReason,
 }: {
   state: CaptureState;
   onClick: () => void;
   onLoadFile: (file: File) => void;
+  recordDisabled?: boolean;
+  recordDisabledReason?: string;
 }) {
   const isRecording = state === "recording";
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -639,11 +666,15 @@ function CaptureButton({
   const handleFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) onLoadFile(file);
+      if (file && isAudioFile(file)) onLoadFile(file);
       e.target.value = "";
     },
     [onLoadFile],
   );
+
+  // Allow STOP while recording even if a source has since become unavailable.
+  const recordButtonDisabled =
+    state === "processing" || (!isRecording && !!recordDisabled);
 
   return (
     <div className="wrd-capture-row">
@@ -651,7 +682,12 @@ function CaptureButton({
       <button
         className={`wrd-capture-btn ${isRecording ? "wrd-capture-btn--recording" : ""}`}
         onClick={onClick}
-        disabled={state === "processing"}
+        disabled={recordButtonDisabled}
+        title={
+          recordButtonDisabled && recordDisabledReason
+            ? recordDisabledReason
+            : undefined
+        }
       >
         <div
           className={`wrd-capture-btn-ring ${isRecording ? "wrd-capture-btn-ring--active" : ""}`}
@@ -680,7 +716,7 @@ function CaptureButton({
       <input
         ref={fileInputRef}
         type="file"
-        accept="audio/*,.wav,.aif,.aiff,.flac,.ogg,.mp3"
+        accept={AUDIO_FILE_ACCEPT}
         style={{ display: "none" }}
         onChange={handleFileChange}
       />
@@ -1300,6 +1336,7 @@ export default function App() {
 
   const handleLoadFile = useCallback(
     async (file: File) => {
+      if (!isAudioFile(file)) return;
       stopPlayback();
       if (captureParam.value) captureParam.set(false);
       resetSampleControls();
@@ -1324,8 +1361,22 @@ export default function App() {
   const [dragActive, setDragActive] = useState(false);
   const dragDepthRef = useRef(0);
 
+  // During drag, browsers expose item MIME types but not filenames. Accept the
+  // drag if any item looks like audio, OR if the type is unknown/empty (some
+  // formats like .aif don't get a MIME from the OS) — final filtering happens
+  // on drop, where we have access to the filename.
+  const dragHasAudioCandidate = (dt: DataTransfer | null) => {
+    if (!dt) return false;
+    if (!Array.from(dt.types ?? []).includes("Files")) return false;
+    const items = Array.from(dt.items ?? []);
+    if (items.length === 0) return true; // no item info available — be permissive
+    return items.some(
+      (it) => it.kind === "file" && (it.type === "" || it.type.startsWith("audio/")),
+    );
+  };
+
   const handleDragEnter = useCallback((e: React.DragEvent) => {
-    if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+    if (!dragHasAudioCandidate(e.dataTransfer)) return;
     e.preventDefault();
     dragDepthRef.current += 1;
     setDragActive(true);
@@ -1339,7 +1390,7 @@ export default function App() {
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (!Array.from(e.dataTransfer?.types ?? []).includes("Files")) return;
+    if (!dragHasAudioCandidate(e.dataTransfer)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
   }, []);
@@ -1350,7 +1401,7 @@ export default function App() {
       e.preventDefault();
       dragDepthRef.current = 0;
       setDragActive(false);
-      const file = e.dataTransfer.files?.[0];
+      const file = Array.from(e.dataTransfer.files ?? []).find(isAudioFile);
       if (file) handleLoadFile(file);
     },
     [handleLoadFile],
@@ -1539,6 +1590,12 @@ export default function App() {
               state={captureState}
               onClick={handleCapture}
               onLoadFile={handleLoadFile}
+              recordDisabled={isInsidePlugin() && !selectedSource}
+              recordDisabledReason={
+                permissionDenied
+                  ? "Screen Recording permission required to record"
+                  : "Select an audio source to record"
+              }
             />
             {dragActive && (
               <div className="wrd-drop-overlay">
