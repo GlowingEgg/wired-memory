@@ -77,31 +77,31 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (-1.0f, 1.0f),
         0.0f));
 
-    // Per-grain ADSR envelope. A/D/R are fractions of grain length; S is sustain
-    // level. If A+D+R > 1 the values are scaled to fit, leaving no sustain phase.
+    // Amplitude ADSR envelope, applied to the entire playback voice. Times in
+    // seconds with a skew that gives more resolution at low values.
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "grain_attack", 1 },
-        "Grain Attack",
-        juce::NormalisableRange<float> (0.0f, 1.0f),
-        0.5f));
+        juce::ParameterID { "env_attack", 1 },
+        "Env Attack",
+        juce::NormalisableRange<float> (0.001f, 5.0f, 0.0f, 0.5f),
+        0.005f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "grain_decay", 1 },
-        "Grain Decay",
-        juce::NormalisableRange<float> (0.0f, 1.0f),
-        0.0f));
+        juce::ParameterID { "env_decay", 1 },
+        "Env Decay",
+        juce::NormalisableRange<float> (0.001f, 5.0f, 0.0f, 0.5f),
+        0.001f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "grain_sustain", 1 },
-        "Grain Sustain",
+        juce::ParameterID { "env_sustain", 1 },
+        "Env Sustain",
         juce::NormalisableRange<float> (0.0f, 1.0f),
         1.0f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "grain_release", 1 },
-        "Grain Release",
-        juce::NormalisableRange<float> (0.0f, 1.0f),
-        0.5f));
+        juce::ParameterID { "env_release", 1 },
+        "Env Release",
+        juce::NormalisableRange<float> (0.001f, 5.0f, 0.0f, 0.5f),
+        0.05f));
 
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "freeze", 1 },
@@ -153,18 +153,6 @@ WiredMemoryAudioProcessor::createParameterLayout()
         "Velocity Sensitivity",
         juce::NormalisableRange<float> (0.0f, 1.0f),
         0.7f));
-
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "amp_attack", 1 },
-        "Amp Attack",
-        juce::NormalisableRange<float> (0.001f, 2.0f, 0.0f, 0.5f),
-        0.005f));
-
-    layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "amp_release", 1 },
-        "Amp Release",
-        juce::NormalisableRange<float> (0.001f, 5.0f, 0.0f, 0.5f),
-        0.15f));
 
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "glide", 1 },
@@ -260,10 +248,10 @@ void WiredMemoryAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     freezeHopCounter_ = 0;
     driftRngState_ = 0xDEADBEEF;
 
-    triggeringNote_              = -1;
-    releaseFadeActive_           = false;
-    releaseFadeSamplesRemaining_ = 0;
-    releaseFadeTotal_            = 0;
+    triggeringNote_   = -1;
+    samplerEnvState_  = EnvState::Idle;
+    samplerEnvLevel_  = 0.0f;
+    stopRequested_.store (false);
 
     // Reset polyphonic voices
     for (auto& v : voices_)
@@ -297,10 +285,10 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float density      = apvts.getRawParameterValue ("density")->load();
     const float scatter      = apvts.getRawParameterValue ("scatter")->load();
     const float pitchScatter = apvts.getRawParameterValue ("pitch_scatter")->load();
-    const float grainAttack  = apvts.getRawParameterValue ("grain_attack")->load();
-    const float grainDecay   = apvts.getRawParameterValue ("grain_decay")->load();
-    const float grainSustain = apvts.getRawParameterValue ("grain_sustain")->load();
-    const float grainRelease = apvts.getRawParameterValue ("grain_release")->load();
+    const float envAttackSec  = apvts.getRawParameterValue ("env_attack")->load();
+    const float envDecaySec   = apvts.getRawParameterValue ("env_decay")->load();
+    const float envSustain    = apvts.getRawParameterValue ("env_sustain")->load();
+    const float envReleaseSec = apvts.getRawParameterValue ("env_release")->load();
     const bool  freezeOn     = apvts.getRawParameterValue ("freeze")->load() >= 0.5f;
     const float drift        = apvts.getRawParameterValue ("drift")->load();
     const float smear        = apvts.getRawParameterValue ("smear")->load();
@@ -310,8 +298,6 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float rootNote     = apvts.getRawParameterValue ("root_note")->load();
     const float densityTrack = apvts.getRawParameterValue ("density_track")->load();
     const float velocitySens = apvts.getRawParameterValue ("velocity_sens")->load();
-    const float ampAttack    = apvts.getRawParameterValue ("amp_attack")->load();
-    const float ampRelease   = apvts.getRawParameterValue ("amp_release")->load();
     const float glide        = apvts.getRawParameterValue ("glide")->load();
     const float fineTune     = apvts.getRawParameterValue ("fine_tune")->load();
     const float sampleGain   = apvts.getRawParameterValue ("sample_gain")->load();
@@ -362,7 +348,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 grainSpawnAccum_ = 0.0;
                 for (auto& v : voices_)
                     v = Voice {};
-                releaseFadeActive_ = false;
+                samplerEnvState_   = EnvState::Idle;
+                samplerEnvLevel_   = 0.0f;
                 triggeringNote_    = -1;
 
                 snapshotRebuildPending_.store (true);
@@ -444,9 +431,9 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         for (auto& v : voices_)
             v = Voice {};
         voiceAllocCounter_ = 0;
-        triggeringNote_              = -1;
-        releaseFadeActive_           = false;
-        releaseFadeSamplesRemaining_ = 0;
+        triggeringNote_   = -1;
+        samplerEnvState_  = EnvState::Idle;
+        samplerEnvLevel_  = 0.0f;
         pitchBendSemitones_.store (0.0f);
         sustainPedalDown_ = false;
         wasSynthMode_ = synthMode;
@@ -466,27 +453,26 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 {
                     playbackPending_.store (true);
                     triggeringNote_     = msg.getNoteNumber();
-                    releaseFadeActive_  = false;
                 }
             }
             else if (msg.isNoteOff() && gateMode)
             {
                 const int note = msg.getNoteNumber();
                 const bool willPlay = playbackActive_.load() || playbackPending_.load();
-                if (willPlay && note == triggeringNote_)
+                if (willPlay && note == triggeringNote_
+                    && samplerEnvState_ != EnvState::Release
+                    && samplerEnvState_ != EnvState::Idle)
                 {
-                    releaseFadeTotal_            = juce::jmax (1, static_cast<int> (currentSampleRate_ * 0.030));
-                    releaseFadeSamplesRemaining_ = releaseFadeTotal_;
-                    releaseFadeActive_           = true;
+                    samplerEnvState_ = EnvState::Release;
                 }
             }
             else if (msg.isAllNotesOff() && gateMode)
             {
-                if (playbackActive_.load() || playbackPending_.load())
+                if ((playbackActive_.load() || playbackPending_.load())
+                    && samplerEnvState_ != EnvState::Release
+                    && samplerEnvState_ != EnvState::Idle)
                 {
-                    releaseFadeTotal_            = juce::jmax (1, static_cast<int> (currentSampleRate_ * 0.030));
-                    releaseFadeSamplesRemaining_ = releaseFadeTotal_;
-                    releaseFadeActive_           = true;
+                    samplerEnvState_ = EnvState::Release;
                 }
             }
         }
@@ -662,26 +648,23 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
     }
 
-    // ── Per-grain ADSR envelope: normalise A+D+R to fit within grain length ──
-    // (sustain fills any remaining time; if A+D+R > 1 they are scaled to sum to 1)
-    float adsrA = grainAttack;
-    float adsrD = grainDecay;
-    float adsrR = grainRelease;
-    const float adsrSum = adsrA + adsrD + adsrR;
-    if (adsrSum > 1.0f)
+    // ── Voice ADSR coefficients (per-block, used by sampler+synth engines) ──
+    const float sr           = static_cast<float> (currentSampleRate_);
+    const float envAttackInc = 1.0f / juce::jmax (1.0f, envAttackSec  * sr);
+    const float envDecayInc  = 1.0f / juce::jmax (1.0f, envDecaySec   * sr);
+    const float envReleaseDec = std::exp (-1.0f / juce::jmax (1.0f, envReleaseSec * sr));
+
+    // Honour any stop request from the message thread by triggering envelope Release.
+    if (stopRequested_.exchange (false))
     {
-        const float inv = 1.0f / adsrSum;
-        adsrA *= inv;
-        adsrD *= inv;
-        adsrR *= inv;
+        playbackPending_.store (false);
+        if (! synthMode
+            && samplerEnvState_ != EnvState::Release
+            && samplerEnvState_ != EnvState::Idle)
+        {
+            samplerEnvState_ = EnvState::Release;
+        }
     }
-    const float adsrS         = grainSustain;
-    const float adsrAttackEnd = adsrA;
-    const float adsrDecayEnd  = adsrA + adsrD;
-    const float adsrRelStart  = 1.0f - adsrR;
-    const float adsrInvA      = adsrA > 0.0f ? 1.0f / adsrA : 0.0f;
-    const float adsrInvD      = adsrD > 0.0f ? 1.0f / adsrD : 0.0f;
-    const float adsrInvR      = adsrR > 0.0f ? 1.0f / adsrR : 0.0f;
 
     // Start with silence — playback will write into the buffer below
     buffer.clear();
@@ -704,6 +687,10 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         for (auto& g : grainPool_)
             g.active = false;
         grainSpawnAccum_ = 1e9;
+
+        // Trigger global ADSR envelope
+        samplerEnvState_ = EnvState::Attack;
+        samplerEnvLevel_ = 0.0f;
 
         playbackActive_.store (true);
     }
@@ -736,8 +723,9 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             playbackPosFrac_ = static_cast<double> (endFrame - 1);
                         else
                         {
-                            playbackActive_.store (false);
-                            playbackProgress_.store (0.0f);
+                            if (samplerEnvState_ != EnvState::Release
+                                && samplerEnvState_ != EnvState::Idle)
+                                samplerEnvState_ = EnvState::Release;
                             break;
                         }
                     }
@@ -750,8 +738,9 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             playbackPosFrac_ = static_cast<double> (startFrame);
                         else
                         {
-                            playbackActive_.store (false);
-                            playbackProgress_.store (0.0f);
+                            if (samplerEnvState_ != EnvState::Release
+                                && samplerEnvState_ != EnvState::Idle)
+                                samplerEnvState_ = EnvState::Release;
                             break;
                         }
                     }
@@ -788,15 +777,14 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                     else
                     {
                         // Check if any grains are still active before stopping
+                        if (samplerEnvState_ != EnvState::Release
+                            && samplerEnvState_ != EnvState::Idle)
+                            samplerEnvState_ = EnvState::Release;
                         bool anyActive = false;
                         for (const auto& g : grainPool_)
                             if (g.active) { anyActive = true; break; }
                         if (! anyActive)
-                        {
-                            playbackActive_.store (false);
-                            playbackProgress_.store (0.0f);
                             break;
-                        }
                     }
                 }
             }
@@ -808,15 +796,14 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                         playbackPosFrac_ = static_cast<double> (startFrame);
                     else
                     {
+                        if (samplerEnvState_ != EnvState::Release
+                            && samplerEnvState_ != EnvState::Idle)
+                            samplerEnvState_ = EnvState::Release;
                         bool anyActive = false;
                         for (const auto& g : grainPool_)
                             if (g.active) { anyActive = true; break; }
                         if (! anyActive)
-                        {
-                            playbackActive_.store (false);
-                            playbackProgress_.store (0.0f);
                             break;
-                        }
                     }
                 }
             }
@@ -877,16 +864,8 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const float envPhase = 1.0f - static_cast<float> (g.lifetime)
                                               / static_cast<float> (g.totalLife);
 
-                // ADSR-shaped grain window
-                float window;
-                if (envPhase < adsrAttackEnd)
-                    window = envPhase * adsrInvA;
-                else if (envPhase < adsrDecayEnd)
-                    window = 1.0f - (1.0f - adsrS) * (envPhase - adsrAttackEnd) * adsrInvD;
-                else if (envPhase < adsrRelStart)
-                    window = adsrS;
-                else
-                    window = adsrS * (1.0f - (envPhase - adsrRelStart) * adsrInvR);
+                // Hann window
+                const float window = 0.5f * (1.0f - std::cos (6.283185307f * envPhase));
 
                 // Read sample with linear interpolation
                 const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));
@@ -953,8 +932,6 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         const int endFrame   = juce::jmin (startFrame + regionLen, totalLen);
 
         // Pre-compute envelope/glide coefficients (per-block constants)
-        const float attackInc   = 1.0f / juce::jmax (1.0f, ampAttack  * static_cast<float> (currentSampleRate_));
-        const float releaseDec  = std::exp (-1.0f / juce::jmax (1.0f, ampRelease * static_cast<float> (currentSampleRate_)));
         const float glideAlpha  = (glide > 0.0f)
             ? 1.0f - std::exp (-1.0f / juce::jmax (1.0f, glide * static_cast<float> (currentSampleRate_)))
             : 1.0f;
@@ -1010,22 +987,30 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 else
                     voice.currentPitchMul = voice.pitchMul;
 
-                // Envelope
+                // ADSR envelope
                 switch (voice.envState)
                 {
                     case EnvState::Attack:
-                        voice.envLevel += (1.0f - voice.envLevel) * attackInc;
+                        voice.envLevel += (1.0f - voice.envLevel) * envAttackInc;
                         if (voice.envLevel >= 0.999f)
                         {
                             voice.envLevel = 1.0f;
+                            voice.envState = EnvState::Decay;
+                        }
+                        break;
+                    case EnvState::Decay:
+                        voice.envLevel -= envDecayInc;
+                        if (voice.envLevel <= envSustain)
+                        {
+                            voice.envLevel = envSustain;
                             voice.envState = EnvState::Sustain;
                         }
                         break;
                     case EnvState::Sustain:
-                        voice.envLevel = 1.0f;
+                        voice.envLevel = envSustain;
                         break;
                     case EnvState::Release:
-                        voice.envLevel *= releaseDec;
+                        voice.envLevel *= envReleaseDec;
                         if (voice.envLevel < 0.001f)
                         {
                             voice.envLevel = 0.0f;
@@ -1133,15 +1118,7 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
 
                 const float envPhase = 1.0f - static_cast<float> (g.lifetime)
                                               / static_cast<float> (g.totalLife);
-                float window;
-                if (envPhase < adsrAttackEnd)
-                    window = envPhase * adsrInvA;
-                else if (envPhase < adsrDecayEnd)
-                    window = 1.0f - (1.0f - adsrS) * (envPhase - adsrAttackEnd) * adsrInvD;
-                else if (envPhase < adsrRelStart)
-                    window = adsrS;
-                else
-                    window = adsrS * (1.0f - (envPhase - adsrRelStart) * adsrInvR);
+                const float window = 0.5f * (1.0f - std::cos (6.283185307f * envPhase));
 
                 const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));
                 const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
@@ -1306,35 +1283,70 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         wasFrozen_ = freezeOn;
     }
 
-    // ── Release fade (sampler mode only — synth uses voice envelopes) ─────
-    if (! synthMode && releaseFadeActive_)
+    // ── Sampler-mode global ADSR envelope, applied to every output sample ──
+    // Runs whenever the envelope is non-Idle so a Release tail keeps audible
+    // even after grain audio has been cut.
+    if (! synthMode && samplerEnvState_ != EnvState::Idle)
     {
         const int numCh = buffer.getNumChannels();
 
         for (int i = 0; i < numSamples; ++i)
         {
-            if (releaseFadeSamplesRemaining_ <= 0)
+            switch (samplerEnvState_)
             {
-                for (int j = i; j < numSamples; ++j)
-                    for (int ch = 0; ch < numCh; ++ch)
-                        buffer.getWritePointer (ch)[j] = 0.0f;
-
-                playbackActive_.store (false);
-                playbackProgress_.store (0.0f);
-                for (auto& g : grainPool_)
-                    g.active = false;
-                grainSpawnAccum_ = 0.0;
-                releaseFadeActive_ = false;
-                triggeringNote_    = -1;
-                break;
+                case EnvState::Attack:
+                    samplerEnvLevel_ += (1.0f - samplerEnvLevel_) * envAttackInc;
+                    if (samplerEnvLevel_ >= 0.999f)
+                    {
+                        samplerEnvLevel_ = 1.0f;
+                        samplerEnvState_ = EnvState::Decay;
+                    }
+                    break;
+                case EnvState::Decay:
+                    samplerEnvLevel_ -= envDecayInc;
+                    if (samplerEnvLevel_ <= envSustain)
+                    {
+                        samplerEnvLevel_ = envSustain;
+                        samplerEnvState_ = EnvState::Sustain;
+                    }
+                    break;
+                case EnvState::Sustain:
+                    samplerEnvLevel_ = envSustain;
+                    break;
+                case EnvState::Release:
+                    samplerEnvLevel_ *= envReleaseDec;
+                    if (samplerEnvLevel_ < 0.001f)
+                    {
+                        samplerEnvLevel_ = 0.0f;
+                        samplerEnvState_ = EnvState::Idle;
+                        playbackActive_.store (false);
+                        playbackProgress_.store (0.0f);
+                        for (auto& g : grainPool_)
+                            g.active = false;
+                        grainSpawnAccum_ = 0.0;
+                        triggeringNote_    = -1;
+                        for (int j = i; j < numSamples; ++j)
+                            for (int ch = 0; ch < numCh; ++ch)
+                                buffer.getWritePointer (ch)[j] = 0.0f;
+                        break;
+                    }
+                    break;
+                case EnvState::Idle:
+                default:
+                    break;
             }
 
-            const float gain = static_cast<float> (releaseFadeSamplesRemaining_)
-                             / static_cast<float> (releaseFadeTotal_);
             for (int ch = 0; ch < numCh; ++ch)
-                buffer.getWritePointer (ch)[i] *= gain;
-            --releaseFadeSamplesRemaining_;
+                buffer.getWritePointer (ch)[i] *= samplerEnvLevel_;
+
+            if (samplerEnvState_ == EnvState::Idle)
+                break;
         }
+    }
+    else if (! synthMode && samplerEnvState_ == EnvState::Idle)
+    {
+        // Envelope idle — silence any residual grain audio (no playback voice)
+        buffer.clear();
     }
 
     // Reset accumulation buffer when recording starts
@@ -1434,13 +1446,9 @@ void WiredMemoryAudioProcessor::startPlayback()
 
 void WiredMemoryAudioProcessor::stopPlayback()
 {
-    playbackActive_.store (false);
-    playbackProgress_.store (0.0f);
-    for (auto& g : grainPool_)
-        g.active = false;
-    grainSpawnAccum_ = 0.0;
-    releaseFadeActive_ = false;
-    triggeringNote_    = -1;
+    // Audio thread converts this to an envelope Release transition so
+    // stop yields a smooth fade rather than a click.
+    stopRequested_.store (true);
 }
 
 void WiredMemoryAudioProcessor::requestTrim (float startNorm, float lenNorm)

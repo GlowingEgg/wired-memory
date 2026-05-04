@@ -25,7 +25,7 @@ static constexpr int kMaxGrains = 64;
 static constexpr int kNumVoices = 6;
 
 // ── Polyphonic voice state (synth mode) ──────────────────────────────────────
-enum class EnvState { Idle, Attack, Sustain, Release };
+enum class EnvState { Idle, Attack, Decay, Sustain, Release };
 
 struct Voice
 {
@@ -169,11 +169,13 @@ private:
     std::atomic<float> playbackProgress_ { 0.0f };  // normalised progress for UI
     std::atomic<int>   sampleLength_    { 0 };       // length of recorded sample in frames
 
-    // -- MIDI gate / release fade (sampler mode) --
-    int  triggeringNote_              = -1;
-    bool releaseFadeActive_           = false;
-    int  releaseFadeSamplesRemaining_ = 0;
-    int  releaseFadeTotal_            = 0;
+    // -- MIDI gate (sampler mode) --
+    int  triggeringNote_ = -1;
+
+    // -- Sampler-mode global ADSR envelope (applied to all output samples) --
+    EnvState samplerEnvState_ = EnvState::Idle;
+    float    samplerEnvLevel_ = 0.0f;
+    std::atomic<bool> stopRequested_ { false };
 
     // -- Grain pool --
     std::array<Grain, kMaxGrains> grainPool_ {};

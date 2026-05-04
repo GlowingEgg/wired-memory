@@ -1059,10 +1059,10 @@ export default function App() {
   const densityParam = useJuceSlider("density");
   const scatterParam = useJuceSlider("scatter");
   const pitchScatterParam = useJuceSlider("pitch_scatter");
-  const grainAttackParam = useJuceSlider("grain_attack");
-  const grainDecayParam = useJuceSlider("grain_decay");
-  const grainSustainParam = useJuceSlider("grain_sustain");
-  const grainReleaseParam = useJuceSlider("grain_release");
+  const envAttackParam = useJuceSlider("env_attack");
+  const envDecayParam = useJuceSlider("env_decay");
+  const envSustainParam = useJuceSlider("env_sustain");
+  const envReleaseParam = useJuceSlider("env_release");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
   const freezeParam = useJuceToggle("freeze");
@@ -1076,8 +1076,6 @@ export default function App() {
   const rootNoteParam = useJuceSlider("root_note");
   const densityTrackParam = useJuceSlider("density_track");
   const velocitySensParam = useJuceSlider("velocity_sens");
-  const ampAttackParam = useJuceSlider("amp_attack");
-  const ampReleaseParam = useJuceSlider("amp_release");
   const glideParam = useJuceSlider("glide");
   const fineTuneParam = useJuceSlider("fine_tune");
   const sampleGainParam = useJuceSlider("sample_gain");
@@ -1146,22 +1144,20 @@ export default function App() {
   // Smear: 0–100%
   const smearDisplay = (smearParam.value * 100).toFixed(0);
 
-  // Grain ADSR: A/D/R as % of grain length, S as % level
-  const grainAttackDisplay = (grainAttackParam.value * 100).toFixed(0);
-  const grainDecayDisplay = (grainDecayParam.value * 100).toFixed(0);
-  const grainSustainDisplay = (grainSustainParam.value * 100).toFixed(0);
-  const grainReleaseDisplay = (grainReleaseParam.value * 100).toFixed(0);
+  // Voice ADSR: A/D/R as ms (range 1ms–5000ms, skew 0.5 → actual = 0.001 + 4.999 * norm²),
+  // S as % level
+  const envAttackActual  = 0.001 + 4.999 * Math.pow(envAttackParam.value,  2.0);
+  const envDecayActual   = 0.001 + 4.999 * Math.pow(envDecayParam.value,   2.0);
+  const envReleaseActual = 0.001 + 4.999 * Math.pow(envReleaseParam.value, 2.0);
+  const envAttackDisplay  = (envAttackActual  * 1000).toFixed(0);
+  const envDecayDisplay   = (envDecayActual   * 1000).toFixed(0);
+  const envReleaseDisplay = (envReleaseActual * 1000).toFixed(0);
+  const envSustainDisplay = (envSustainParam.value * 100).toFixed(0);
 
   // Synth params (MIDI 1/4)
   const rootNoteValue = Math.round(rootNoteParam.value * 127);
   const densityTrackDisplay = (densityTrackParam.value * 100).toFixed(0);
   const velocitySensDisplay = (velocitySensParam.value * 100).toFixed(0);
-  // amp_attack: 0.001–2.0s, skew 0.5 → actual = 0.001 + 1.999 * norm^2
-  const ampAttackActual = 0.001 + 1.999 * Math.pow(ampAttackParam.value, 2.0);
-  const ampAttackDisplay = (ampAttackActual * 1000).toFixed(0);
-  // amp_release: 0.001–5.0s, skew 0.5 → actual = 0.001 + 4.999 * norm^2
-  const ampReleaseActual = 0.001 + 4.999 * Math.pow(ampReleaseParam.value, 2.0);
-  const ampReleaseDisplay = (ampReleaseActual * 1000).toFixed(0);
   const glideDisplay = (glideParam.value * 100).toFixed(0);
   // fine_tune: -100 to +100 cents (norm 0..1)
   const fineTuneCents = -100 + 200 * fineTuneParam.value;
@@ -1287,10 +1283,10 @@ export default function App() {
     densityParam.set(0);
     scatterParam.set(0);
     pitchScatterParam.set(0.5);
-    grainAttackParam.set(0.5);
-    grainDecayParam.set(0);
-    grainSustainParam.set(1);
-    grainReleaseParam.set(0.5);
+    envAttackParam.set(Math.sqrt(0.004 / 4.999));
+    envDecayParam.set(0);
+    envSustainParam.set(1);
+    envReleaseParam.set(Math.sqrt(0.049 / 4.999));
     freezeParam.set(false);
     driftParam.set(0);
     smearParam.set(0);
@@ -1306,10 +1302,10 @@ export default function App() {
     densityParam,
     scatterParam,
     pitchScatterParam,
-    grainAttackParam,
-    grainDecayParam,
-    grainSustainParam,
-    grainReleaseParam,
+    envAttackParam,
+    envDecayParam,
+    envSustainParam,
+    envReleaseParam,
     freezeParam,
     driftParam,
     smearParam,
@@ -1404,10 +1400,10 @@ export default function App() {
       densityParam.set(0);
       scatterParam.set(0);
       pitchScatterParam.set(0.5);
-      grainAttackParam.set(0.5);
-      grainDecayParam.set(0);
-      grainSustainParam.set(1);
-      grainReleaseParam.set(0.5);
+      envAttackParam.set(Math.sqrt(0.004 / 4.999));
+      envDecayParam.set(0);
+      envSustainParam.set(1);
+      envReleaseParam.set(Math.sqrt(0.049 / 4.999));
       freezeParam.set(false);
       driftParam.set(0);
       smearParam.set(0);
@@ -1449,10 +1445,10 @@ export default function App() {
     densityParam,
     scatterParam,
     pitchScatterParam,
-    grainAttackParam,
-    grainDecayParam,
-    grainSustainParam,
-    grainReleaseParam,
+    envAttackParam,
+    envDecayParam,
+    envSustainParam,
+    envReleaseParam,
     freezeParam,
     driftParam,
     smearParam,
@@ -1709,42 +1705,42 @@ export default function App() {
                   </div>
                 </div>
                 <div className="wrd-sample-knobs wrd-grain-knobs">
-                  <span className="wrd-grain-label">SHAPE</span>
+                  <span className="wrd-grain-label">ENV</span>
                   <Knob
                     label="ATTACK"
-                    normalizedValue={grainAttackParam.value}
-                    displayValue={grainAttackDisplay}
-                    unit="%"
+                    normalizedValue={envAttackParam.value}
+                    displayValue={envAttackDisplay}
+                    unit="ms"
                     color="cyan"
-                    onChange={grainAttackParam.set}
-                    defaultValue={0.5}
+                    onChange={envAttackParam.set}
+                    defaultValue={Math.sqrt(0.004 / 4.999)}
                   />
                   <Knob
                     label="DECAY"
-                    normalizedValue={grainDecayParam.value}
-                    displayValue={grainDecayDisplay}
-                    unit="%"
+                    normalizedValue={envDecayParam.value}
+                    displayValue={envDecayDisplay}
+                    unit="ms"
                     color="amber"
-                    onChange={grainDecayParam.set}
+                    onChange={envDecayParam.set}
                     defaultValue={0}
                   />
                   <Knob
                     label="SUSTAIN"
-                    normalizedValue={grainSustainParam.value}
-                    displayValue={grainSustainDisplay}
+                    normalizedValue={envSustainParam.value}
+                    displayValue={envSustainDisplay}
                     unit="%"
                     color="light"
-                    onChange={grainSustainParam.set}
+                    onChange={envSustainParam.set}
                     defaultValue={1}
                   />
                   <Knob
                     label="RELEASE"
-                    normalizedValue={grainReleaseParam.value}
-                    displayValue={grainReleaseDisplay}
-                    unit="%"
+                    normalizedValue={envReleaseParam.value}
+                    displayValue={envReleaseDisplay}
+                    unit="ms"
                     color="cyan"
-                    onChange={grainReleaseParam.set}
-                    defaultValue={0.5}
+                    onChange={envReleaseParam.set}
+                    defaultValue={Math.sqrt(0.049 / 4.999)}
                   />
                 </div>
                 <div className="wrd-sample-knobs wrd-spectral-knobs">
@@ -1828,24 +1824,6 @@ export default function App() {
                     color="amber"
                     onChange={velocitySensParam.set}
                     defaultValue={0.7}
-                  />
-                  <Knob
-                    label="ATK"
-                    normalizedValue={ampAttackParam.value}
-                    displayValue={ampAttackDisplay}
-                    unit="ms"
-                    color="light"
-                    onChange={ampAttackParam.set}
-                    defaultValue={Math.sqrt((0.005 - 0.001) / 1.999)}
-                  />
-                  <Knob
-                    label="REL"
-                    normalizedValue={ampReleaseParam.value}
-                    displayValue={ampReleaseDisplay}
-                    unit="ms"
-                    color="light"
-                    onChange={ampReleaseParam.set}
-                    defaultValue={Math.sqrt((0.15 - 0.001) / 4.999)}
                   />
                   <Knob
                     label="GLIDE"

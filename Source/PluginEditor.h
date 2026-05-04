@@ -41,17 +41,17 @@ private:
     juce::WebSliderRelay pitchScatterRelay { "pitch_scatter" };
     juce::WebSliderParameterAttachment pitchScatterAttachment;
 
-    juce::WebSliderRelay grainAttackRelay  { "grain_attack" };
-    juce::WebSliderParameterAttachment grainAttackAttachment;
+    juce::WebSliderRelay envAttackRelay  { "env_attack" };
+    juce::WebSliderParameterAttachment envAttackAttachment;
 
-    juce::WebSliderRelay grainDecayRelay   { "grain_decay" };
-    juce::WebSliderParameterAttachment grainDecayAttachment;
+    juce::WebSliderRelay envDecayRelay   { "env_decay" };
+    juce::WebSliderParameterAttachment envDecayAttachment;
 
-    juce::WebSliderRelay grainSustainRelay { "grain_sustain" };
-    juce::WebSliderParameterAttachment grainSustainAttachment;
+    juce::WebSliderRelay envSustainRelay { "env_sustain" };
+    juce::WebSliderParameterAttachment envSustainAttachment;
 
-    juce::WebSliderRelay grainReleaseRelay { "grain_release" };
-    juce::WebSliderParameterAttachment grainReleaseAttachment;
+    juce::WebSliderRelay envReleaseRelay { "env_release" };
+    juce::WebSliderParameterAttachment envReleaseAttachment;
 
     // Toggle relays for capture and monitor
     juce::WebToggleButtonRelay captureRelay { "capture" };
@@ -94,12 +94,6 @@ private:
 
     juce::WebSliderRelay velocitySensRelay { "velocity_sens" };
     juce::WebSliderParameterAttachment velocitySensAttachment;
-
-    juce::WebSliderRelay ampAttackRelay { "amp_attack" };
-    juce::WebSliderParameterAttachment ampAttackAttachment;
-
-    juce::WebSliderRelay ampReleaseRelay { "amp_release" };
-    juce::WebSliderParameterAttachment ampReleaseAttachment;
 
     juce::WebSliderRelay glideRelay { "glide" };
     juce::WebSliderParameterAttachment glideAttachment;
