@@ -41,8 +41,17 @@ private:
     juce::WebSliderRelay pitchScatterRelay { "pitch_scatter" };
     juce::WebSliderParameterAttachment pitchScatterAttachment;
 
-    juce::WebSliderRelay shapeRelay { "shape" };
-    juce::WebSliderParameterAttachment shapeAttachment;
+    juce::WebSliderRelay grainAttackRelay  { "grain_attack" };
+    juce::WebSliderParameterAttachment grainAttackAttachment;
+
+    juce::WebSliderRelay grainDecayRelay   { "grain_decay" };
+    juce::WebSliderParameterAttachment grainDecayAttachment;
+
+    juce::WebSliderRelay grainSustainRelay { "grain_sustain" };
+    juce::WebSliderParameterAttachment grainSustainAttachment;
+
+    juce::WebSliderRelay grainReleaseRelay { "grain_release" };
+    juce::WebSliderParameterAttachment grainReleaseAttachment;
 
     // Toggle relays for capture and monitor
     juce::WebToggleButtonRelay captureRelay { "capture" };

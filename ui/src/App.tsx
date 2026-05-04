@@ -472,35 +472,6 @@ function NotePicker({
   );
 }
 
-/* ── Shape selector (segmented toggle) ── */
-const SHAPE_NAMES = ["Hann", "Tri", "Trap", "Rect"] as const;
-
-function ShapeSelector({
-  value,
-  onChange,
-}: {
-  value: number;
-  onChange: (normalized: number) => void;
-}) {
-  const selected = Math.round(value * 3);
-  return (
-    <div className="wrd-shape-selector">
-      <span className="wrd-shape-label">SHAPE</span>
-      <div className="wrd-shape-buttons">
-        {SHAPE_NAMES.map((name, i) => (
-          <button
-            key={name}
-            className={`wrd-shape-btn ${selected === i ? "wrd-shape-btn--active" : ""}`}
-            onClick={() => onChange(i / 3)}
-          >
-            {name}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 /* ── Live waveform visualiser (incoming signal) ── */
 function LiveWaveform({ sourceSelector }: { sourceSelector: React.ReactNode }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -1088,7 +1059,10 @@ export default function App() {
   const densityParam = useJuceSlider("density");
   const scatterParam = useJuceSlider("scatter");
   const pitchScatterParam = useJuceSlider("pitch_scatter");
-  const shapeParam = useJuceSlider("shape");
+  const grainAttackParam = useJuceSlider("grain_attack");
+  const grainDecayParam = useJuceSlider("grain_decay");
+  const grainSustainParam = useJuceSlider("grain_sustain");
+  const grainReleaseParam = useJuceSlider("grain_release");
   const loopParam = useJuceToggle("loop");
   const reverseParam = useJuceToggle("reverse");
   const freezeParam = useJuceToggle("freeze");
@@ -1171,6 +1145,12 @@ export default function App() {
 
   // Smear: 0–100%
   const smearDisplay = (smearParam.value * 100).toFixed(0);
+
+  // Grain ADSR: A/D/R as % of grain length, S as % level
+  const grainAttackDisplay = (grainAttackParam.value * 100).toFixed(0);
+  const grainDecayDisplay = (grainDecayParam.value * 100).toFixed(0);
+  const grainSustainDisplay = (grainSustainParam.value * 100).toFixed(0);
+  const grainReleaseDisplay = (grainReleaseParam.value * 100).toFixed(0);
 
   // Synth params (MIDI 1/4)
   const rootNoteValue = Math.round(rootNoteParam.value * 127);
@@ -1307,7 +1287,10 @@ export default function App() {
     densityParam.set(0);
     scatterParam.set(0);
     pitchScatterParam.set(0.5);
-    shapeParam.set(0);
+    grainAttackParam.set(0.5);
+    grainDecayParam.set(0);
+    grainSustainParam.set(1);
+    grainReleaseParam.set(0.5);
     freezeParam.set(false);
     driftParam.set(0);
     smearParam.set(0);
@@ -1323,7 +1306,10 @@ export default function App() {
     densityParam,
     scatterParam,
     pitchScatterParam,
-    shapeParam,
+    grainAttackParam,
+    grainDecayParam,
+    grainSustainParam,
+    grainReleaseParam,
     freezeParam,
     driftParam,
     smearParam,
@@ -1418,7 +1404,10 @@ export default function App() {
       densityParam.set(0);
       scatterParam.set(0);
       pitchScatterParam.set(0.5);
-      shapeParam.set(0);
+      grainAttackParam.set(0.5);
+      grainDecayParam.set(0);
+      grainSustainParam.set(1);
+      grainReleaseParam.set(0.5);
       freezeParam.set(false);
       driftParam.set(0);
       smearParam.set(0);
@@ -1460,7 +1449,10 @@ export default function App() {
     densityParam,
     scatterParam,
     pitchScatterParam,
-    shapeParam,
+    grainAttackParam,
+    grainDecayParam,
+    grainSustainParam,
+    grainReleaseParam,
     freezeParam,
     driftParam,
     smearParam,
@@ -1716,10 +1708,45 @@ export default function App() {
                     />
                   </div>
                 </div>
-                <ShapeSelector
-                  value={shapeParam.value}
-                  onChange={shapeParam.set}
-                />
+                <div className="wrd-sample-knobs wrd-grain-knobs">
+                  <span className="wrd-grain-label">SHAPE</span>
+                  <Knob
+                    label="ATTACK"
+                    normalizedValue={grainAttackParam.value}
+                    displayValue={grainAttackDisplay}
+                    unit="%"
+                    color="cyan"
+                    onChange={grainAttackParam.set}
+                    defaultValue={0.5}
+                  />
+                  <Knob
+                    label="DECAY"
+                    normalizedValue={grainDecayParam.value}
+                    displayValue={grainDecayDisplay}
+                    unit="%"
+                    color="amber"
+                    onChange={grainDecayParam.set}
+                    defaultValue={0}
+                  />
+                  <Knob
+                    label="SUSTAIN"
+                    normalizedValue={grainSustainParam.value}
+                    displayValue={grainSustainDisplay}
+                    unit="%"
+                    color="light"
+                    onChange={grainSustainParam.set}
+                    defaultValue={1}
+                  />
+                  <Knob
+                    label="RELEASE"
+                    normalizedValue={grainReleaseParam.value}
+                    displayValue={grainReleaseDisplay}
+                    unit="%"
+                    color="cyan"
+                    onChange={grainReleaseParam.set}
+                    defaultValue={0.5}
+                  />
+                </div>
                 <div className="wrd-sample-knobs wrd-spectral-knobs">
                   <span className="wrd-grain-label">SPECTRAL</span>
                   <div

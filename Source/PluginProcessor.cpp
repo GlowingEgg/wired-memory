@@ -77,11 +77,31 @@ WiredMemoryAudioProcessor::createParameterLayout()
         juce::NormalisableRange<float> (-1.0f, 1.0f),
         0.0f));
 
+    // Per-grain ADSR envelope. A/D/R are fractions of grain length; S is sustain
+    // level. If A+D+R > 1 the values are scaled to fit, leaving no sustain phase.
     layout.add (std::make_unique<juce::AudioParameterFloat> (
-        juce::ParameterID { "shape", 1 },
-        "Shape",
-        juce::NormalisableRange<float> (0.0f, 3.0f, 1.0f),
+        juce::ParameterID { "grain_attack", 1 },
+        "Grain Attack",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.5f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "grain_decay", 1 },
+        "Grain Decay",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
         0.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "grain_sustain", 1 },
+        "Grain Sustain",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        1.0f));
+
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "grain_release", 1 },
+        "Grain Release",
+        juce::NormalisableRange<float> (0.0f, 1.0f),
+        0.5f));
 
     layout.add (std::make_unique<juce::AudioParameterBool> (
         juce::ParameterID { "freeze", 1 },
@@ -277,7 +297,10 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float density      = apvts.getRawParameterValue ("density")->load();
     const float scatter      = apvts.getRawParameterValue ("scatter")->load();
     const float pitchScatter = apvts.getRawParameterValue ("pitch_scatter")->load();
-    const int   shapeType    = static_cast<int> (apvts.getRawParameterValue ("shape")->load());
+    const float grainAttack  = apvts.getRawParameterValue ("grain_attack")->load();
+    const float grainDecay   = apvts.getRawParameterValue ("grain_decay")->load();
+    const float grainSustain = apvts.getRawParameterValue ("grain_sustain")->load();
+    const float grainRelease = apvts.getRawParameterValue ("grain_release")->load();
     const bool  freezeOn     = apvts.getRawParameterValue ("freeze")->load() >= 0.5f;
     const float drift        = apvts.getRawParameterValue ("drift")->load();
     const float smear        = apvts.getRawParameterValue ("smear")->load();
@@ -639,6 +662,27 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
     }
 
+    // ── Per-grain ADSR envelope: normalise A+D+R to fit within grain length ──
+    // (sustain fills any remaining time; if A+D+R > 1 they are scaled to sum to 1)
+    float adsrA = grainAttack;
+    float adsrD = grainDecay;
+    float adsrR = grainRelease;
+    const float adsrSum = adsrA + adsrD + adsrR;
+    if (adsrSum > 1.0f)
+    {
+        const float inv = 1.0f / adsrSum;
+        adsrA *= inv;
+        adsrD *= inv;
+        adsrR *= inv;
+    }
+    const float adsrS         = grainSustain;
+    const float adsrAttackEnd = adsrA;
+    const float adsrDecayEnd  = adsrA + adsrD;
+    const float adsrRelStart  = 1.0f - adsrR;
+    const float adsrInvA      = adsrA > 0.0f ? 1.0f / adsrA : 0.0f;
+    const float adsrInvD      = adsrD > 0.0f ? 1.0f / adsrD : 0.0f;
+    const float adsrInvR      = adsrR > 0.0f ? 1.0f / adsrR : 0.0f;
+
     // Start with silence — playback will write into the buffer below
     buffer.clear();
 
@@ -833,29 +877,16 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const float envPhase = 1.0f - static_cast<float> (g.lifetime)
                                               / static_cast<float> (g.totalLife);
 
-                // Window function selected by shape parameter
+                // ADSR-shaped grain window
                 float window;
-                switch (shapeType)
-                {
-                    default:
-                    case 0: // Hann
-                        window = 0.5f * (1.0f - std::cos (6.283185307f * envPhase));
-                        break;
-                    case 1: // Triangle
-                        window = 1.0f - std::abs (2.0f * envPhase - 1.0f);
-                        break;
-                    case 2: // Trapezoid (15% ramp, 70% hold, 15% ramp)
-                        if (envPhase < 0.15f)
-                            window = envPhase / 0.15f;
-                        else if (envPhase > 0.85f)
-                            window = (1.0f - envPhase) / 0.15f;
-                        else
-                            window = 1.0f;
-                        break;
-                    case 3: // Rectangle
-                        window = 1.0f;
-                        break;
-                }
+                if (envPhase < adsrAttackEnd)
+                    window = envPhase * adsrInvA;
+                else if (envPhase < adsrDecayEnd)
+                    window = 1.0f - (1.0f - adsrS) * (envPhase - adsrAttackEnd) * adsrInvD;
+                else if (envPhase < adsrRelStart)
+                    window = adsrS;
+                else
+                    window = adsrS * (1.0f - (envPhase - adsrRelStart) * adsrInvR);
 
                 // Read sample with linear interpolation
                 const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));
@@ -963,7 +994,6 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
 
         const double speedAbs = static_cast<double> (speed);
-        const float twoPi = juce::MathConstants<float>::twoPi;
 
         for (int i = 0; i < numSamples; ++i)
         {
@@ -1104,24 +1134,14 @@ void WiredMemoryAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                 const float envPhase = 1.0f - static_cast<float> (g.lifetime)
                                               / static_cast<float> (g.totalLife);
                 float window;
-                switch (shapeType)
-                {
-                    default:
-                    case 0:
-                        window = 0.5f * (1.0f - std::cos (twoPi * envPhase));
-                        break;
-                    case 1:
-                        window = 1.0f - std::abs (2.0f * envPhase - 1.0f);
-                        break;
-                    case 2:
-                        if (envPhase < 0.15f)        window = envPhase / 0.15f;
-                        else if (envPhase > 0.85f)   window = (1.0f - envPhase) / 0.15f;
-                        else                         window = 1.0f;
-                        break;
-                    case 3:
-                        window = 1.0f;
-                        break;
-                }
+                if (envPhase < adsrAttackEnd)
+                    window = envPhase * adsrInvA;
+                else if (envPhase < adsrDecayEnd)
+                    window = 1.0f - (1.0f - adsrS) * (envPhase - adsrAttackEnd) * adsrInvD;
+                else if (envPhase < adsrRelStart)
+                    window = adsrS;
+                else
+                    window = adsrS * (1.0f - (envPhase - adsrRelStart) * adsrInvR);
 
                 const int idx0 = juce::jlimit (0, totalLen - 1, static_cast<int> (g.phase));
                 const int idx1 = juce::jmin (idx0 + 1, totalLen - 1);
